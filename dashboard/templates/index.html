@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Evaluation Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1>AI Evaluation Dashboard</h1>
+      <p>Latest status, trends, and threshold breaches by application.</p>
+    </header>
+
+    <main>
+      <section>
+        <h2>Applications</h2>
+        <div id="apps"></div>
+      </section>
+
+      <section>
+        <h2>Trends</h2>
+        <label for="appSelect">Application:</label>
+        <select id="appSelect"></select>
+        <canvas id="trendChart"></canvas>
+      </section>
+
+      <section>
+        <h2>Threshold Controls</h2>
+        <label>
+          <input id="dynamicThresholds" type="checkbox" />
+          Enable dynamic thresholds
+        </label>
+        <div class="threshold-grid">
+          <label for="accuracyWarning">Accuracy warning (min)</label>
+          <input id="accuracyWarning" type="number" step="0.001" placeholder="e.g. 0.93" />
+
+          <label for="latencyWarning">Latency p95 warning (max)</label>
+          <input id="latencyWarning" type="number" step="1" placeholder="e.g. 1200" />
+
+          <label for="driftWarning">Input drift warning (max)</label>
+          <input id="driftWarning" type="number" step="0.001" placeholder="e.g. 0.2" />
+        </div>
+        <button id="applyThresholds" type="button">Apply Thresholds</button>
+      </section>
+
+      <section>
+        <h2>Alerts</h2>
+        <ul id="alerts"></ul>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

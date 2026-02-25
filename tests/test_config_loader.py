@@ -1,0 +1,121 @@
+import json
+import pytest
+from pathlib import Path
+
+from config.loader import load_config, resolve_app_config
+
+
+def test_load_config_parses_policies_and_thresholds() -> None:
+    cfg = load_config("config/config.yaml")
+
+    assert "app1" in cfg.applications
+    assert "accuracy" in cfg.evaluation_policies
+
+    app_cfg = resolve_app_config(cfg, "app1")
+    assert app_cfg.batch_time == "0 2 * * *"
+    assert "accuracy" in app_cfg.policy_names
+
+
+def test_load_config_json(tmp_path: Path) -> None:
+    payload = {
+        "default_batch_time": "0 * * * *",
+        "evaluation_policies": {
+            "accuracy": {"metrics": ["accuracy"], "parameters": {"version": "1.1"}}
+        },
+        "app_config": {
+            "appx": {
+                "batch_time": "0 1 * * *",
+                "evaluation_policies": ["accuracy"],
+                "thresholds": {
+                    "accuracy": [{"level": "warning", "value": 0.9, "direction": "min"}]
+                },
+            }
+        },
+    }
+    file_path = tmp_path / "cfg.json"
+    file_path.write_text(json.dumps(payload))
+
+    cfg = load_config(str(file_path))
+    app_cfg = resolve_app_config(cfg, "appx")
+
+    assert app_cfg.policy_names == ["accuracy"]
+    assert app_cfg.thresholds["accuracy"][0].value == 0.9
+
+
+def test_missing_config_raises() -> None:
+    """load_config should raise FileNotFoundError for a non-existent path."""
+    with pytest.raises(FileNotFoundError, match="not found"):
+        load_config("/tmp/does_not_exist_ever.yaml")
+
+
+def test_global_thresholds_merged_with_app_thresholds() -> None:
+    """Per-app thresholds should override globals; non-overridden globals should persist."""
+    cfg = load_config("config/config.yaml")
+    app_cfg = resolve_app_config(cfg, "app1")
+
+    # app1 overrides accuracy critical to 0.9 (global is 0.88)
+    accuracy_thresholds = app_cfg.thresholds["accuracy"]
+    critical = next((t for t in accuracy_thresholds if t.level == "critical"), None)
+    assert critical is not None
+    assert critical.value == pytest.approx(0.9)
+
+    # global latency_p95_ms threshold should be inherited by app1
+    assert "latency_p95_ms" in app_cfg.thresholds
+
+
+def test_unsupported_config_format_raises(tmp_path: Path) -> None:
+    """load_config should raise ValueError for unsupported file extensions."""
+    bad_file = tmp_path / "config.toml"
+    bad_file.write_text("default_batch_time = '0 * * * *'\n")
+
+    with pytest.raises(ValueError, match="Unsupported"):
+        load_config(str(bad_file))
+
+
+def test_app_without_policies_uses_root_default_policies(tmp_path: Path) -> None:
+    payload = {
+        "default_batch_time": "0 * * * *",
+        "evaluation_policies": {
+            "accuracy": {"metrics": ["accuracy"], "parameters": {"version": "1.1"}},
+            "latency": {"metrics": ["latency_avg_ms"], "parameters": {}},
+        },
+        "default_evaluation_policies": ["accuracy"],
+        "app_config": {"appx": {"batch_time": "0 1 * * *"}},
+    }
+    file_path = tmp_path / "cfg.json"
+    file_path.write_text(json.dumps(payload))
+
+    cfg = load_config(str(file_path))
+    app_cfg = resolve_app_config(cfg, "appx")
+
+    assert app_cfg.policy_names == ["accuracy"]
+
+
+def test_default_policies_fall_back_to_all_defined_policies(tmp_path: Path) -> None:
+    payload = {
+        "default_batch_time": "0 * * * *",
+        "evaluation_policies": {
+            "accuracy": {"metrics": ["accuracy"], "parameters": {"version": "1.1"}},
+            "latency": {"metrics": ["latency_avg_ms"], "parameters": {}},
+        },
+        "app_config": {"appx": {"batch_time": "0 1 * * *"}},
+    }
+    file_path = tmp_path / "cfg.json"
+    file_path.write_text(json.dumps(payload))
+
+    cfg = load_config(str(file_path))
+    app_cfg = resolve_app_config(cfg, "appx")
+
+    assert app_cfg.policy_names == ["accuracy", "latency"]
+
+
+def test_unknown_app_id_uses_root_defaults() -> None:
+    cfg = load_config("config/config.yaml")
+
+    app_cfg = resolve_app_config(cfg, "app_not_configured")
+
+    assert app_cfg.app_id == "app_not_configured"
+    assert app_cfg.batch_time == cfg.default_batch_time
+    assert app_cfg.policy_names == cfg.default_evaluation_policies
+    assert app_cfg.metadata == {}
+    assert app_cfg.thresholds == cfg.global_thresholds

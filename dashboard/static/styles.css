@@ -1,0 +1,76 @@
+:root {
+  --bg: #f3f9f8;
+  --card: #ffffff;
+  --text: #163246;
+  --accent: #1f8a70;
+  --warn: #d98e04;
+  --critical: #c73e1d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", sans-serif;
+  color: var(--text);
+  background: radial-gradient(circle at top left, #e3f4f1, var(--bg));
+}
+
+header {
+  padding: 1.5rem;
+  background: linear-gradient(110deg, #daf0ea, #f3f9f8);
+  border-bottom: 1px solid #d3e6e2;
+}
+
+main {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+}
+
+section {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 8px 20px rgba(22, 50, 70, 0.08);
+}
+
+.app-card {
+  border: 1px solid #dbe8e6;
+  border-radius: 10px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.status-warning {
+  color: var(--warn);
+  font-weight: 700;
+}
+
+.status-critical {
+  color: var(--critical);
+  font-weight: 700;
+}
+
+.status-healthy {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+#alerts li {
+  margin-bottom: 0.5rem;
+}
+
+.threshold-grid {
+  margin: 0.75rem 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
+}
+
+.threshold-grid input {
+  max-width: 220px;
+}
