@@ -37,6 +37,32 @@ class CosmosConfig:
 
 
 @dataclass
+class EmailAlertConfig:
+    enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 587
+    username: str = ""
+    password: str = ""
+    from_address: str = ""
+    to_addresses: List[str] = field(default_factory=list)
+    use_tls: bool = True
+
+
+@dataclass
+class TeamsAlertConfig:
+    enabled: bool = False
+    webhook_url: str = ""
+
+
+@dataclass
+class AlertingConfig:
+    enabled: bool = False
+    min_level: str = "warning"
+    email: EmailAlertConfig = field(default_factory=EmailAlertConfig)
+    teams: TeamsAlertConfig = field(default_factory=TeamsAlertConfig)
+
+
+@dataclass
 class RootConfig:
     default_batch_time: str
     evaluation_policies: Dict[str, PolicyConfig] = field(default_factory=dict)
@@ -44,6 +70,7 @@ class RootConfig:
     global_thresholds: Dict[str, List[ThresholdConfig]] = field(default_factory=dict)
     applications: Dict[str, AppConfig] = field(default_factory=dict)
     cosmos: Optional[CosmosConfig] = None
+    alerting: AlertingConfig = field(default_factory=AlertingConfig)
 
 
 @dataclass

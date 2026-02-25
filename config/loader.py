@@ -11,11 +11,14 @@ logger = logging.getLogger(__name__)
 import yaml
 
 from config.models import (
+    AlertingConfig,
     AppConfig,
     CosmosConfig,
+    EmailAlertConfig,
     PolicyConfig,
     ResolvedAppConfig,
     RootConfig,
+    TeamsAlertConfig,
     ThresholdConfig,
 )
 
@@ -71,6 +74,36 @@ def _parse_applications(raw: Dict[str, Any]) -> Dict[str, AppConfig]:
     return parsed
 
 
+def _parse_alerting(raw: Dict[str, Any]) -> AlertingConfig:
+    email_raw = raw.get("email", {})
+    teams_raw = raw.get("teams", {})
+    to_addresses_raw = email_raw.get("to_addresses", [])
+    to_addresses = (
+        [item.strip() for item in to_addresses_raw.split(",") if item.strip()]
+        if isinstance(to_addresses_raw, str)
+        else list(to_addresses_raw)
+    )
+
+    return AlertingConfig(
+        enabled=bool(raw.get("enabled", False)),
+        min_level=str(raw.get("min_level", "warning")).lower(),
+        email=EmailAlertConfig(
+            enabled=bool(email_raw.get("enabled", False)),
+            smtp_host=str(email_raw.get("smtp_host", "")),
+            smtp_port=int(email_raw.get("smtp_port", 587)),
+            username=str(email_raw.get("username", "")),
+            password=str(email_raw.get("password", "")),
+            from_address=str(email_raw.get("from_address", "")),
+            to_addresses=to_addresses,
+            use_tls=bool(email_raw.get("use_tls", True)),
+        ),
+        teams=TeamsAlertConfig(
+            enabled=bool(teams_raw.get("enabled", False)),
+            webhook_url=str(teams_raw.get("webhook_url", "")),
+        ),
+    )
+
+
 def load_config(config_path: str) -> RootConfig:
     path = Path(config_path)
     if not path.exists():
@@ -112,6 +145,7 @@ def load_config(config_path: str) -> RootConfig:
         global_thresholds=_parse_thresholds(raw.get("global_thresholds", {})),
         applications=_parse_applications(raw.get("app_config", {})),
         cosmos=cosmos,
+        alerting=_parse_alerting(raw.get("alerting", {})),
     )
 
 

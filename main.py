@@ -13,8 +13,10 @@ from data.repositories import (
     CosmosEvaluationRepository,
     CosmosTelemetryRepository,
 )
+from evaluation.thresholds import evaluate_thresholds
 from orchestration.batch_partition import select_group, total_groups
 from orchestration.batch_runner import BatchEvaluationRunner
+from orchestration.notifier import send_alerts
 from orchestration.scheduler import CronScheduler
 
 logger = logging.getLogger(__name__)
@@ -118,7 +120,10 @@ async def run_batch(
 
     for app in target_apps:
         results = await runner.run_for_application(app, start_ts=start, end_ts=end)
-        total_breaches = sum(len(r.breaches) for r in results)
+        notification_breaches = []
+        for result in results:
+            notification_breaches.extend(evaluate_thresholds(result.metrics, app.thresholds))
+        total_breaches = len(notification_breaches)
         next_run = scheduler.next_run_time(app, now=now)
         logger.info(
             "app_id=%s policy_runs=%d breaches=%d window=%s..%s",
@@ -128,6 +133,16 @@ async def run_batch(
             start,
             end,
         )
+        try:
+            send_alerts(
+                config=root_config.alerting,
+                app_id=app.app_id,
+                window_start=start,
+                window_end=end,
+                breaches=notification_breaches,
+            )
+        except Exception:
+            logger.exception("Failed to send alerts for app_id=%s", app.app_id)
         logger.info("app_id=%s next_batch_run_utc=%s", app.app_id, next_run.isoformat())
 
 

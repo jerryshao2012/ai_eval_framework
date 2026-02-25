@@ -43,6 +43,22 @@ global_thresholds:
       value: 0.2
       direction: "max"
 
+alerting:
+  enabled: false
+  min_level: "warning"
+  email:
+    enabled: false
+    smtp_host: "${ALERT_SMTP_HOST}"
+    smtp_port: 587
+    username: "${ALERT_SMTP_USER}"
+    password: "${ALERT_SMTP_PASS}"
+    from_address: "${ALERT_FROM_EMAIL}"
+    to_addresses: "${ALERT_TO_EMAILS}"
+    use_tls: true
+  teams:
+    enabled: false
+    webhook_url: "${ALERT_TEAMS_WEBHOOK_URL}"
+
 app_config:
   app1:
     batch_time: "0 2 * * *"

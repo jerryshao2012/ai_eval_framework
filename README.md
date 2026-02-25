@@ -101,6 +101,7 @@ Configuration supports **root defaults** plus **application-specific overrides**
 - `global_thresholds`: default thresholds applied to all apps.
 - `app_config`: app-specific overrides.
 - `cosmos`: endpoint/key/database/container settings.
+- `alerting`: optional email/Teams notification settings.
 
 ### Application configuration (override)
 - `batch_time`: cron expression per app.
@@ -132,6 +133,26 @@ app_config:
       project_code: "PROJ-APP3"
 ```
 
+Alerting example:
+
+```yaml
+alerting:
+  enabled: true
+  min_level: "warning"  # warning | critical
+  email:
+    enabled: true
+    smtp_host: "${ALERT_SMTP_HOST}"
+    smtp_port: 587
+    username: "${ALERT_SMTP_USER}"
+    password: "${ALERT_SMTP_PASS}"
+    from_address: "${ALERT_FROM_EMAIL}"
+    to_addresses: "${ALERT_TO_EMAILS}"  # comma-separated or list
+    use_tls: true
+  teams:
+    enabled: true
+    webhook_url: "${ALERT_TEAMS_WEBHOOK_URL}"
+```
+
 ## Continuous Monitoring Trigger (Batch Jobs)
 
 Monitoring is triggered by batch runs from `main.py`:
@@ -142,6 +163,7 @@ Monitoring is triggered by batch runs from `main.py`:
 - Persist raw evaluation results (metrics only) to Cosmos DB.
 - Log the next scheduled batch launch time per app (`next_batch_run_utc`).
 - Optionally shard the app list by fixed-size groups for horizontal VM scaling.
+- Optionally send notifications through email and/or Microsoft Teams based on configured thresholds.
 
 Manual run examples:
 
@@ -218,8 +240,8 @@ python3 scripts/submit_azure_batch.py \
 Task flow:
 1. Fetch telemetry records for `(app_id, time window)`.
 2. Launch async policy evaluations in parallel.
-3. Run threshold checks against each produced metric.
-4. Save `EvaluationResult` documents to Cosmos DB.
+3. Save `EvaluationResult` metric documents to Cosmos DB.
+4. Evaluate thresholds in-memory for notifications only (when alerting is enabled).
 
 This design is extensible to Celery, Durable Functions, or Azure Batch for larger workloads.
 
@@ -276,6 +298,7 @@ Supported directions:
 - `max`: breach when value is **above** threshold.
 
 Thresholds are evaluated when dashboard data is requested (not during batch persistence). This keeps batch outputs stable and allows runtime threshold tuning without re-running batch jobs.
+For notifications, thresholds are evaluated at batch runtime in-memory; alerts are sent via configured channels, but breach records are still not persisted to Cosmos DB.
 
 Dynamic thresholds are available on dashboard APIs when needed:
 - enable with `dynamic_thresholds=1`

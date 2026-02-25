@@ -119,3 +119,36 @@ def test_unknown_app_id_uses_root_defaults() -> None:
     assert app_cfg.policy_names == cfg.default_evaluation_policies
     assert app_cfg.metadata == {}
     assert app_cfg.thresholds == cfg.global_thresholds
+
+
+def test_alerting_config_parsed_from_json(tmp_path: Path) -> None:
+    payload = {
+        "default_batch_time": "0 * * * *",
+        "evaluation_policies": {"accuracy": {"metrics": ["accuracy"], "parameters": {}}},
+        "alerting": {
+            "enabled": True,
+            "min_level": "critical",
+            "email": {
+                "enabled": True,
+                "smtp_host": "smtp.example.com",
+                "smtp_port": 2525,
+                "from_address": "noreply@example.com",
+                "to_addresses": "a@example.com,b@example.com",
+            },
+            "teams": {
+                "enabled": True,
+                "webhook_url": "https://example.webhook",
+            },
+        },
+        "app_config": {"appx": {}},
+    }
+    file_path = tmp_path / "cfg.json"
+    file_path.write_text(json.dumps(payload))
+
+    cfg = load_config(str(file_path))
+    assert cfg.alerting.enabled is True
+    assert cfg.alerting.min_level == "critical"
+    assert cfg.alerting.email.enabled is True
+    assert cfg.alerting.email.smtp_port == 2525
+    assert cfg.alerting.email.to_addresses == ["a@example.com", "b@example.com"]
+    assert cfg.alerting.teams.enabled is True
