@@ -12,25 +12,28 @@ def test_load_config_parses_policies_and_thresholds() -> None:
     cfg = load_config(CONFIG_PATH)
 
     assert "app1" in cfg.applications
-    assert "accuracy" in cfg.evaluation_policies
+    assert "performance_precision_coherence" in cfg.evaluation_policies
 
     app_cfg = resolve_app_config(cfg, "app1")
     assert app_cfg.batch_time == "0 2 * * *"
-    assert "accuracy" in app_cfg.policy_names
+    assert "performance_precision_coherence" in app_cfg.policy_names
 
 
 def test_load_config_json(tmp_path: Path) -> None:
     payload = {
         "default_batch_time": "0 * * * *",
         "evaluation_policies": {
-            "accuracy": {"metrics": ["accuracy"], "parameters": {"version": "1.1"}}
+            "performance_precision_coherence": {
+                "metrics": ["performance_precision_coherence"],
+                "parameters": {"version": "1.1"},
+            }
         },
         "app_config": {
             "appx": {
                 "batch_time": "0 1 * * *",
-                "evaluation_policies": ["accuracy"],
+                "evaluation_policies": ["performance_precision_coherence"],
                 "thresholds": {
-                    "accuracy": [{"level": "warning", "value": 0.9, "direction": "min"}]
+                    "performance_precision_coherence": [{"level": "warning", "value": 0.9, "direction": "min"}]
                 },
             }
         },
@@ -41,8 +44,8 @@ def test_load_config_json(tmp_path: Path) -> None:
     cfg = load_config(str(file_path))
     app_cfg = resolve_app_config(cfg, "appx")
 
-    assert app_cfg.policy_names == ["accuracy"]
-    assert app_cfg.thresholds["accuracy"][0].value == 0.9
+    assert app_cfg.policy_names == ["performance_precision_coherence"]
+    assert app_cfg.thresholds["performance_precision_coherence"][0].value == 0.9
 
 
 def test_missing_config_raises() -> None:
@@ -56,14 +59,9 @@ def test_global_thresholds_merged_with_app_thresholds() -> None:
     cfg = load_config(CONFIG_PATH)
     app_cfg = resolve_app_config(cfg, "app1")
 
-    # app1 overrides accuracy critical to 0.9 (global is 0.88)
-    accuracy_thresholds = app_cfg.thresholds["accuracy"]
-    critical = next((t for t in accuracy_thresholds if t.level == "critical"), None)
-    assert critical is not None
-    assert critical.value == pytest.approx(0.9)
-
-    # global latency_p95_ms threshold should be inherited by app1
-    assert "latency_p95_ms" in app_cfg.thresholds
+    # app1 should inherit global thresholds
+    assert "system_reliability_latency" in app_cfg.thresholds
+    assert "safety_toxicity" in app_cfg.thresholds
 
 
 def test_unsupported_config_format_raises(tmp_path: Path) -> None:
@@ -79,10 +77,10 @@ def test_app_without_policies_uses_root_default_policies(tmp_path: Path) -> None
     payload = {
         "default_batch_time": "0 * * * *",
         "evaluation_policies": {
-            "accuracy": {"metrics": ["accuracy"], "parameters": {"version": "1.1"}},
-            "latency": {"metrics": ["latency_avg_ms"], "parameters": {}},
+            "performance_precision_coherence": {"metrics": ["performance_precision_coherence"], "parameters": {"version": "1.1"}},
+            "system_reliability_latency": {"metrics": ["system_reliability_latency"], "parameters": {}},
         },
-        "default_evaluation_policies": ["accuracy"],
+        "default_evaluation_policies": ["performance_precision_coherence"],
         "app_config": {"appx": {"batch_time": "0 1 * * *"}},
     }
     file_path = tmp_path / "cfg.json"
@@ -91,15 +89,15 @@ def test_app_without_policies_uses_root_default_policies(tmp_path: Path) -> None
     cfg = load_config(str(file_path))
     app_cfg = resolve_app_config(cfg, "appx")
 
-    assert app_cfg.policy_names == ["accuracy"]
+    assert app_cfg.policy_names == ["performance_precision_coherence"]
 
 
 def test_default_policies_fall_back_to_all_defined_policies(tmp_path: Path) -> None:
     payload = {
         "default_batch_time": "0 * * * *",
         "evaluation_policies": {
-            "accuracy": {"metrics": ["accuracy"], "parameters": {"version": "1.1"}},
-            "latency": {"metrics": ["latency_avg_ms"], "parameters": {}},
+            "performance_precision_coherence": {"metrics": ["performance_precision_coherence"], "parameters": {"version": "1.1"}},
+            "system_reliability_latency": {"metrics": ["system_reliability_latency"], "parameters": {}},
         },
         "app_config": {"appx": {"batch_time": "0 1 * * *"}},
     }
@@ -109,7 +107,7 @@ def test_default_policies_fall_back_to_all_defined_policies(tmp_path: Path) -> N
     cfg = load_config(str(file_path))
     app_cfg = resolve_app_config(cfg, "appx")
 
-    assert app_cfg.policy_names == ["accuracy", "latency"]
+    assert app_cfg.policy_names == ["performance_precision_coherence", "system_reliability_latency"]
 
 
 def test_unknown_app_id_uses_root_defaults() -> None:
@@ -127,7 +125,9 @@ def test_unknown_app_id_uses_root_defaults() -> None:
 def test_alerting_config_parsed_from_json(tmp_path: Path) -> None:
     payload = {
         "default_batch_time": "0 * * * *",
-        "evaluation_policies": {"accuracy": {"metrics": ["accuracy"], "parameters": {}}},
+        "evaluation_policies": {
+            "performance_precision_coherence": {"metrics": ["performance_precision_coherence"], "parameters": {}}
+        },
         "alerting": {
             "enabled": True,
             "min_level": "critical",

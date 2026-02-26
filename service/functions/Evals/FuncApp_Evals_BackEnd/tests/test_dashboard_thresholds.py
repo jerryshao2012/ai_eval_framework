@@ -16,8 +16,9 @@ def test_dashboard_dynamic_thresholds_override_defaults() -> None:
     client = app.test_client()
     response = client.get(
         "/api/latest?dynamic_thresholds=1"
-        "&threshold.accuracy.warning=0.90&direction.accuracy.warning=min"
-        "&threshold.latency_p95_ms.warning=1500&direction.latency_p95_ms.warning=max"
+        "&threshold.performance_precision_coherence.warning=0.70&direction.performance_precision_coherence.warning=min"
+        "&threshold.system_reliability_latency.warning=1500&direction.system_reliability_latency.warning=max"
+        "&threshold.safety_toxicity.warning=0.85&direction.safety_toxicity.warning=min"
     )
     assert response.status_code == 200
     rows = response.get_json()

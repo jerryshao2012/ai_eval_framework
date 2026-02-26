@@ -1,5 +1,15 @@
 default_batch_time: "0 * * * *"
-default_evaluation_policies: "accuracy,latency"
+default_evaluation_policies:
+  - safety_toxicity
+  - safety_bias_fairness
+  - safety_robustness
+  - safety_compliance
+  - performance_groundedness_faithfulness
+  - performance_relevance
+  - performance_precision_coherence
+  - performance_readability_fluency_style
+  - system_reliability_latency
+  - system_reliability_availability_resource_health
 
 cosmos:
   endpoint: "${COSMOS_ENDPOINT}"
@@ -9,39 +19,98 @@ cosmos:
   results_container: "evaluation_results"
 
 evaluation_policies:
-  accuracy:
-    metrics: ["accuracy"]
+  safety_toxicity:
+    metrics: ["safety_toxicity"]
     parameters:
       version: "1.0"
-  latency:
-    metrics: ["latency_avg_ms", "latency_p95_ms"]
+  safety_bias_fairness:
+    metrics: ["safety_bias_fairness"]
     parameters:
       version: "1.0"
-  drift:
-    metrics: ["input_length_drift"]
+      group_key: "demographic_group"
+  safety_robustness:
+    metrics: ["safety_robustness"]
     parameters:
       version: "1.0"
-      baseline_input_length: 120
+  safety_compliance:
+    metrics: ["safety_compliance"]
+    parameters:
+      version: "1.0"
+  performance_groundedness_faithfulness:
+    metrics: ["performance_groundedness_faithfulness"]
+    parameters:
+      version: "1.0"
+  performance_relevance:
+    metrics: ["performance_relevance"]
+    parameters:
+      version: "1.0"
+  performance_precision_coherence:
+    metrics: ["performance_precision_coherence"]
+    parameters:
+      version: "1.0"
+  performance_readability_fluency_style:
+    metrics: ["performance_readability_fluency_style"]
+    parameters:
+      version: "1.0"
+  system_reliability_latency:
+    metrics: ["system_reliability_latency"]
+    parameters:
+      version: "1.0"
+  system_reliability_availability_resource_health:
+    metrics: ["system_reliability_availability_resource_health"]
+    parameters:
+      version: "1.0"
 
 global_thresholds:
-  accuracy:
+  safety_toxicity:
     - level: "warning"
-      value: 0.93
+      value: 0.90
       direction: "min"
     - level: "critical"
-      value: 0.88
+      value: 0.80
       direction: "min"
-  latency_p95_ms:
+  safety_bias_fairness:
+    - level: "warning"
+      value: 0.85
+      direction: "min"
+  safety_robustness:
+    - level: "warning"
+      value: 0.85
+      direction: "min"
+  safety_compliance:
+    - level: "warning"
+      value: 0.95
+      direction: "min"
+    - level: "critical"
+      value: 0.90
+      direction: "min"
+  performance_groundedness_faithfulness:
+    - level: "warning"
+      value: 0.75
+      direction: "min"
+  performance_relevance:
+    - level: "warning"
+      value: 0.60
+      direction: "min"
+  performance_precision_coherence:
+    - level: "warning"
+      value: 0.70
+      direction: "min"
+  performance_readability_fluency_style:
+    - level: "warning"
+      value: 0.70
+      direction: "min"
+  system_reliability_latency:
     - level: "warning"
       value: 1200
       direction: "max"
     - level: "critical"
       value: 2000
       direction: "max"
-  input_length_drift:
+  system_reliability_availability_resource_health:
     - level: "warning"
-      value: 0.2
-      direction: "max"
+      value: 0.95
+      direction: "min"
 
 alerting:
   enabled: false
@@ -62,16 +131,21 @@ alerting:
 app_config:
   app1:
     batch_time: "0 2 * * *"
-    evaluation_policies: "accuracy,latency"
-    thresholds:
-      accuracy:
-        - level: "critical"
-          value: 0.9
-          direction: "min"
+    evaluation_policies:
+      - safety_toxicity
+      - safety_compliance
+      - performance_relevance
+      - performance_precision_coherence
+      - system_reliability_latency
+      - system_reliability_availability_resource_health
     metadata:
       project_code: "PROJ-APP1"
   app2:
     batch_time: "0 */6 * * *"
-    evaluation_policies: "drift,latency"
+    evaluation_policies:
+      - safety_robustness
+      - performance_groundedness_faithfulness
+      - performance_readability_fluency_style
+      - system_reliability_latency
     metadata:
       project_code: "PROJ-APP2"

@@ -40,14 +40,14 @@
           Enable dynamic thresholds
         </label>
         <div class="threshold-grid">
-          <label for="accuracyWarning">Accuracy warning (min)</label>
-          <input id="accuracyWarning" type="number" step="0.001" placeholder="e.g. 0.93" />
+          <label for="precisionWarning">Precision & coherence warning (min)</label>
+          <input id="precisionWarning" type="number" step="0.001" placeholder="e.g. 0.70" />
 
-          <label for="latencyWarning">Latency p95 warning (max)</label>
+          <label for="latencyWarning">System reliability latency warning (max)</label>
           <input id="latencyWarning" type="number" step="1" placeholder="e.g. 1200" />
 
-          <label for="driftWarning">Input drift warning (max)</label>
-          <input id="driftWarning" type="number" step="0.001" placeholder="e.g. 0.2" />
+          <label for="toxicityWarning">Safety toxicity warning (min)</label>
+          <input id="toxicityWarning" type="number" step="0.001" placeholder="e.g. 0.90" />
         </div>
         <button id="applyThresholds" type="button">Apply Thresholds</button>
       </section>

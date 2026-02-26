@@ -17,21 +17,21 @@ function buildThresholdQuery() {
 
   params.set("dynamic_thresholds", "1");
 
-  const accuracyWarning = document.getElementById("accuracyWarning").value;
+  const precisionWarning = document.getElementById("precisionWarning").value;
   const latencyWarning = document.getElementById("latencyWarning").value;
-  const driftWarning = document.getElementById("driftWarning").value;
+  const toxicityWarning = document.getElementById("toxicityWarning").value;
 
-  if (accuracyWarning !== "") {
-    params.set("threshold.accuracy.warning", accuracyWarning);
-    params.set("direction.accuracy.warning", "min");
+  if (precisionWarning !== "") {
+    params.set("threshold.performance_precision_coherence.warning", precisionWarning);
+    params.set("direction.performance_precision_coherence.warning", "min");
   }
   if (latencyWarning !== "") {
-    params.set("threshold.latency_p95_ms.warning", latencyWarning);
-    params.set("direction.latency_p95_ms.warning", "max");
+    params.set("threshold.system_reliability_latency.warning", latencyWarning);
+    params.set("direction.system_reliability_latency.warning", "max");
   }
-  if (driftWarning !== "") {
-    params.set("threshold.input_length_drift.warning", driftWarning);
-    params.set("direction.input_length_drift.warning", "max");
+  if (toxicityWarning !== "") {
+    params.set("threshold.safety_toxicity.warning", toxicityWarning);
+    params.set("direction.safety_toxicity.warning", "min");
   }
 
   return `?${params.toString()}`;
@@ -46,7 +46,7 @@ function renderApps(items) {
     card.className = "app-card";
 
     const metrics = item.metrics
-      .map((m) => `${m.metric_name}: ${Number(m.value).toFixed(3)}`)
+      .map((m) => `${m.metric_type ?? "Unknown Type"} | ${m.metric_name}: ${Number(m.value).toFixed(3)}`)
       .join(" | ");
 
     card.innerHTML = `
@@ -152,14 +152,14 @@ async function loadTrend(appId) {
   const trend = await fetchJson(`/api/trends/${appId}`);
   const labels = trend.map((x) => x.timestamp.slice(0, 10));
 
-  const accuracy = trend.map((x) => x.accuracy ?? null);
-  const latency = trend.map((x) => x.latency_p95_ms ?? null);
-  const drift = trend.map((x) => x.input_length_drift ?? null);
+  const precision = trend.map((x) => x.performance_precision_coherence ?? null);
+  const latency = trend.map((x) => x.system_reliability_latency ?? null);
+  const toxicity = trend.map((x) => x.safety_toxicity ?? null);
 
   const datasets = [
-    { label: "Accuracy", data: accuracy, yAxisID: "y", borderColor: "#1f8a70" },
-    { label: "P95 Latency (ms)", data: latency, yAxisID: "y1", borderColor: "#f07167" },
-    { label: "Input Drift", data: drift, yAxisID: "y", borderColor: "#3d5a80" }
+    { label: "Performance Precision Coherence", data: precision, yAxisID: "y", borderColor: "#1f8a70" },
+    { label: "System Reliability Latency", data: latency, yAxisID: "y1", borderColor: "#f07167" },
+    { label: "Safety Toxicity", data: toxicity, yAxisID: "y", borderColor: "#3d5a80" }
   ];
 
   if (trendChart) {

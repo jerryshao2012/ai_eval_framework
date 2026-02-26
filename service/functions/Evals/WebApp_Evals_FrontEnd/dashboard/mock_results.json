@@ -4,31 +4,33 @@
       "app_id": "app1",
       "timestamp": "2026-02-24T13:00:00Z",
       "metrics": [
-        {"metric_name": "accuracy", "value": 0.91},
-        {"metric_name": "latency_p95_ms", "value": 1300}
+        {"metric_name": "performance_precision_coherence", "value": 0.72},
+        {"metric_name": "system_reliability_latency", "value": 1300},
+        {"metric_name": "safety_toxicity", "value": 0.88}
       ]
     },
     {
       "app_id": "app2",
       "timestamp": "2026-02-24T13:00:00Z",
       "metrics": [
-        {"metric_name": "input_length_drift", "value": 0.11},
-        {"metric_name": "latency_p95_ms", "value": 900}
+        {"metric_name": "performance_readability_fluency_style", "value": 0.81},
+        {"metric_name": "system_reliability_latency", "value": 900},
+        {"metric_name": "safety_robustness", "value": 0.86}
       ]
     }
   ],
   "trends": {
     "app1": [
-      {"timestamp": "2026-02-21T00:00:00Z", "accuracy": 0.95, "latency_p95_ms": 1100},
-      {"timestamp": "2026-02-22T00:00:00Z", "accuracy": 0.94, "latency_p95_ms": 1150},
-      {"timestamp": "2026-02-23T00:00:00Z", "accuracy": 0.92, "latency_p95_ms": 1220},
-      {"timestamp": "2026-02-24T00:00:00Z", "accuracy": 0.91, "latency_p95_ms": 1300}
+      {"timestamp": "2026-02-21T00:00:00Z", "performance_precision_coherence": 0.79, "system_reliability_latency": 1100, "safety_toxicity": 0.93},
+      {"timestamp": "2026-02-22T00:00:00Z", "performance_precision_coherence": 0.77, "system_reliability_latency": 1150, "safety_toxicity": 0.92},
+      {"timestamp": "2026-02-23T00:00:00Z", "performance_precision_coherence": 0.74, "system_reliability_latency": 1220, "safety_toxicity": 0.90},
+      {"timestamp": "2026-02-24T00:00:00Z", "performance_precision_coherence": 0.72, "system_reliability_latency": 1300, "safety_toxicity": 0.88}
     ],
     "app2": [
-      {"timestamp": "2026-02-21T00:00:00Z", "input_length_drift": 0.06, "latency_p95_ms": 870},
-      {"timestamp": "2026-02-22T00:00:00Z", "input_length_drift": 0.07, "latency_p95_ms": 860},
-      {"timestamp": "2026-02-23T00:00:00Z", "input_length_drift": 0.09, "latency_p95_ms": 890},
-      {"timestamp": "2026-02-24T00:00:00Z", "input_length_drift": 0.11, "latency_p95_ms": 900}
+      {"timestamp": "2026-02-21T00:00:00Z", "performance_readability_fluency_style": 0.84, "system_reliability_latency": 870, "safety_robustness": 0.89},
+      {"timestamp": "2026-02-22T00:00:00Z", "performance_readability_fluency_style": 0.83, "system_reliability_latency": 860, "safety_robustness": 0.88},
+      {"timestamp": "2026-02-23T00:00:00Z", "performance_readability_fluency_style": 0.82, "system_reliability_latency": 890, "safety_robustness": 0.87},
+      {"timestamp": "2026-02-24T00:00:00Z", "performance_readability_fluency_style": 0.81, "system_reliability_latency": 900, "safety_robustness": 0.86}
     ]
   }
 }

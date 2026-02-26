@@ -8,6 +8,10 @@ from data.repositories import (
     InMemoryTelemetryRepository,
 )
 from orchestration.batch_runner import BatchEvaluationRunner
+from evaluation.taxonomy import (
+    PERFORMANCE_PRECISION_COHERENCE,
+    SYSTEM_RELIABILITY_LATENCY,
+)
 
 _TELEMETRY = [
     TelemetryRecord(
@@ -37,14 +41,14 @@ _TELEMETRY = [
 _APP_CFG = ResolvedAppConfig(
     app_id="app1",
     batch_time="0 * * * *",
-    policy_names=["accuracy", "latency"],
+    policy_names=["performance_precision_coherence", "system_reliability_latency"],
     policies=[
-        PolicyConfig(name="accuracy", metrics=["accuracy"], parameters={"version": "1.0"}),
-        PolicyConfig(name="latency", metrics=["latency_avg_ms", "latency_p95_ms"], parameters={}),
+        PolicyConfig(name="performance_precision_coherence", metrics=["performance_precision_coherence"], parameters={"version": "1.0"}),
+        PolicyConfig(name="system_reliability_latency", metrics=["system_reliability_latency"], parameters={}),
     ],
     thresholds={
-        "accuracy": [ThresholdConfig(level="warning", value=0.75, direction="min")],
-        "latency_p95_ms": [ThresholdConfig(level="warning", value=150, direction="max")],
+        "performance_precision_coherence": [ThresholdConfig(level="warning", value=0.75, direction="min")],
+        "system_reliability_latency": [ThresholdConfig(level="warning", value=150, direction="max")],
     },
 )
 
@@ -65,8 +69,22 @@ async def test_batch_runner_generates_and_saves_results() -> None:
 
     assert len(results) == 2
     assert len(store.results) == 2
-    assert any(r.policy_name == "accuracy" for r in store.results)
+    assert any(r.policy_name == "performance_precision_coherence" for r in store.results)
     assert all(not r.breaches for r in store.results)
+    for result in store.results:
+        for metric in result.metrics:
+            assert metric.metric_type
+            assert metric.version
+            assert metric.timestamp
+            assert metric.metadata["value_object_type"] == "metric_value_versioned"
+            assert metric.metadata["value_object_version"] == metric.version
+            assert metric.metadata["policy_name"] == result.policy_name
+            assert "window_start" in metric.metadata
+            assert "window_end" in metric.metadata
+    precision_result = next(r for r in store.results if r.policy_name == "performance_precision_coherence")
+    assert precision_result.metrics[0].metric_type == PERFORMANCE_PRECISION_COHERENCE
+    latency_result = next(r for r in store.results if r.policy_name == "system_reliability_latency")
+    assert all(m.metric_type == SYSTEM_RELIABILITY_LATENCY for m in latency_result.metrics)
 
 
 @pytest.mark.asyncio
@@ -112,5 +130,5 @@ async def test_batch_runner_empty_records_produces_zero_metrics() -> None:
     )
 
     assert len(results) == 2
-    accuracy_result = next(r for r in results if r.policy_name == "accuracy")
-    assert accuracy_result.metrics[0].value == 0.0
+    precision_result = next(r for r in results if r.policy_name == "performance_precision_coherence")
+    assert precision_result.metrics[0].value == 0.0

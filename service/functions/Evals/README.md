@@ -5,7 +5,7 @@ A modular Python framework for continuous monitoring of AI systems across multip
 ## Overview
 
 This project provides:
-- Multi-policy AI evaluation (`accuracy`, `latency`, `drift`, `performance`) with async per-policy execution.
+- Multi-policy AI evaluation using Continuous Monitoring metric names (for example `safety_toxicity`, `performance_precision_coherence`, `system_reliability_latency`) with async per-policy execution.
 - Versioned metric objects for traceability/replay, persisted as metrics-only evaluation documents in Cosmos DB.
 - Dual threshold modes: dashboard-time thresholding (with dynamic overrides) and batch-time in-memory thresholding for notifications.
 - Configurable threshold alerts through SMTP email and Microsoft Teams webhook channels.
@@ -13,6 +13,9 @@ This project provides:
 - Horizontal scale-out batching with deterministic group sharding (`group_size`, `group_index`) and Azure Batch task submission support.
 - Batch execution observability: current status, history, aggregate statistics, and failed-item traceback/log drill-down.
 - API-first dashboard backend with OpenAPI/Swagger endpoints (`/api/openapi.json`, `/api/docs`).
+
+Continuous Monitoring taxonomy sync:
+- The framework uses taxonomy-native metric names directly (no mapping layer). Each metric sets `metric_name` and `metric_type` to the same taxonomy name.
 
 ## Why Cosmos DB SQL API
 
@@ -44,7 +47,7 @@ Batch trigger (cron/timer)
             v
 Batch runner (per app)
     |                 \
-    |                  +--> Async policy tasks (accuracy/latency/drift/...)
+    |                  +--> Async policy tasks (taxonomy-native metrics)
     |                                  |
     |                                  v
     +--------------------------> Cosmos DB: evaluation_results (metrics only)
@@ -126,12 +129,18 @@ Example:
 
 ```yaml
 default_batch_time: "0 * * * *"
-default_evaluation_policies: "accuracy,latency"
+default_evaluation_policies:
+  - safety_toxicity
+  - performance_precision_coherence
+  - system_reliability_latency
 
 app_config:
   app1:
     batch_time: "0 2 * * *"            # daily at 2 AM
-    evaluation_policies: "accuracy,latency"
+    evaluation_policies:
+      - safety_toxicity
+      - performance_precision_coherence
+      - system_reliability_latency
   app2:
     batch_time: "0 */6 * * *"           # every 6 hours
   app3:                                  # no app-specific settings -> root defaults apply
@@ -266,7 +275,6 @@ Required fields for effective monitoring:
 - `model_version`
 - `input_text`
 - `output_text`
-- `expected_output` (needed for accuracy)
 - `latency_ms`
 - `user_id` (optional, preferably pseudonymized)
 - `metadata` (slice tags, channel, locale, etc.)
@@ -286,16 +294,27 @@ Metrics are stored as value-versioned objects for traceability:
 
 ```json
 {
-  "metric_name": "accuracy",
-  "value": 0.95,
+  "metric_name": "performance_precision_coherence",
+  "value": 0.81,
   "version": "1.0",
   "timestamp": "2025-02-24T12:00:00Z",
   "metadata": {
-    "model_version": "2.3",
+    "samples": 124,
     "data_slice": "2025-02-23"
   }
 }
 ```
+
+Traceability and rollback fields are enforced for every saved metric:
+- `version` and `timestamp`
+- `metric_name` (taxonomy-native) and `metric_type`
+- `metadata.policy_name`
+- `metadata.policy_version`
+- `metadata.value_object_type = "metric_value_versioned"`
+- `metadata.value_object_version` (matches `version`)
+- `metadata.window_start` and `metadata.window_end`
+
+This allows filtering and rollback by versioned metric objects without re-shaping historic records.
 
 ## Configurable Thresholds (Dashboard-Time Evaluation)
 
@@ -319,17 +338,41 @@ Dynamic thresholds are available on dashboard APIs when needed:
 Example:
 
 ```text
-/api/latest?dynamic_thresholds=1&threshold.accuracy.warning=0.90&direction.accuracy.warning=min
+/api/latest?dynamic_thresholds=1&threshold.performance_precision_coherence.warning=0.70&direction.performance_precision_coherence.warning=min
 ```
+
+## Continuous Monitoring Taxonomy Alignment
+
+The project uses taxonomy-native metric names directly:
+- `safety_toxicity`
+- `safety_bias_fairness`
+- `safety_robustness`
+- `safety_compliance`
+- `performance_groundedness_faithfulness`
+- `performance_relevance`
+- `performance_precision_coherence`
+- `performance_readability_fluency_style`
+- `system_reliability_latency`
+- `system_reliability_availability_resource_health`
+
+References in code:
+- `FuncApp_Evals_BackEnd/evaluation/taxonomy.py`
+- `FuncApp_Evals_BackEnd/evaluation/policies.py`
 
 ## Built-in Evaluation Policies
 
 | Policy | Metrics | Purpose |
 |---|---|---|
-| `accuracy` | `accuracy` | Exact-match quality check against expected outputs |
-| `latency` | `latency_avg_ms`, `latency_p95_ms` | Responsiveness tracking |
-| `drift` | `input_length_drift` | Input distribution shift proxy |
-| `performance` | `performance_score` | Composite quality/latency score |
+| `safety_toxicity` | `safety_toxicity` | Toxic output-rate proxy |
+| `safety_bias_fairness` | `safety_bias_fairness` | Group disparity proxy |
+| `safety_robustness` | `safety_robustness` | Output stability proxy |
+| `safety_compliance` | `safety_compliance` | Policy-violation proxy |
+| `performance_groundedness_faithfulness` | `performance_groundedness_faithfulness` | Citation/evidence proxy |
+| `performance_relevance` | `performance_relevance` | Input-output lexical overlap proxy |
+| `performance_precision_coherence` | `performance_precision_coherence` | Repetition/structure coherence proxy |
+| `performance_readability_fluency_style` | `performance_readability_fluency_style` | Readability/fluency proxy |
+| `system_reliability_latency` | `system_reliability_latency` | P95 latency metric |
+| `system_reliability_availability_resource_health` | `system_reliability_availability_resource_health` | Availability/resource-health proxy |
 
 ## How to Add a New Policy
 
@@ -384,7 +427,7 @@ Open: `http://localhost:5000`
 
 Dashboard capabilities:
 - Applications list with latest evaluation status.
-- Trend chart for selected application (accuracy, p95 latency, drift).
+- Trend chart for selected application (precision/coherence, system latency, safety toxicity by default).
 - Alert list for threshold breaches.
 - Optional runtime threshold overrides without changing stored batch data.
 - Batch execution monitoring: current run status, history, aggregate statistics, and failed item trace logs.

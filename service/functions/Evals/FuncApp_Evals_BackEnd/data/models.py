@@ -42,6 +42,7 @@ class MetricValueVersioned:
     value: float
     version: str
     timestamp: str
+    metric_type: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:

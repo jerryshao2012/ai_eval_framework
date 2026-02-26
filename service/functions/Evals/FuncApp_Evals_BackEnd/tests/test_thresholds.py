@@ -6,14 +6,14 @@ from evaluation.thresholds import evaluate_thresholds
 def test_evaluate_thresholds_detects_breach() -> None:
     metrics = [
         MetricValueVersioned(
-            metric_name="accuracy",
+            metric_name="performance_precision_coherence",
             value=0.9,
             version="1.0",
             timestamp="2026-02-24T00:00:00Z",
         )
     ]
     thresholds = {
-        "accuracy": [
+        "performance_precision_coherence": [
             ThresholdConfig(level="warning", value=0.93, direction="min"),
             ThresholdConfig(level="critical", value=0.88, direction="min"),
         ]

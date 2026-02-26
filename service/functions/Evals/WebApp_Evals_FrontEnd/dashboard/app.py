@@ -172,11 +172,13 @@ def _active_threshold_map() -> Dict[str, List[ThresholdConfig]]:
 
 
 def _make_metric(metric: Dict[str, Any], fallback_ts: str) -> MetricValueVersioned:
+    name = str(metric["metric_name"])
     return MetricValueVersioned(
-        metric_name=metric["metric_name"],
+        metric_name=name,
         value=float(metric["value"]),
         version=str(metric.get("version", "dashboard")),
         timestamp=str(metric.get("timestamp", fallback_ts)),
+        metric_type=str(metric.get("metric_type", name)),
         metadata=metric.get("metadata", {}),
     )
 
@@ -198,6 +200,7 @@ def _latest_with_breaches(
         metrics = [_make_metric(metric, row.get("timestamp", "")) for metric in row.get("metrics", [])]
         breaches = evaluate_thresholds(metrics, threshold_map)
         enriched = dict(row)
+        enriched["metrics"] = [m.to_dict() for m in metrics]
         enriched["breaches"] = [b.to_dict() for b in breaches]
         enriched["status"] = _status_for_breaches(breaches)
         output.append(enriched)

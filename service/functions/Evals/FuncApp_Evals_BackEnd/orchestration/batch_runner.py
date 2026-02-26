@@ -7,7 +7,7 @@ from typing import List, Optional
 from uuid import uuid4
 
 from config.models import ResolvedAppConfig
-from data.models import EvaluationResult, TelemetryRecord
+from data.models import EvaluationResult, MetricValueVersioned, TelemetryRecord
 from data.repositories import EvaluationRepository, TelemetryRepository
 from evaluation.policies import EvaluationPolicy, build_policy_registry
 
@@ -40,7 +40,7 @@ class BatchEvaluationRunner:
         logger.debug("Fetched %d telemetry records for app_id=%s", len(records), app_cfg.app_id)
 
         tasks = [
-            self._evaluate_policy(policy_name, app_cfg, records)
+            self._evaluate_policy(policy_name, app_cfg, records, start, end)
             for policy_name in app_cfg.policy_names
         ]
         results = await asyncio.gather(*tasks)
@@ -62,6 +62,8 @@ class BatchEvaluationRunner:
         policy_name: str,
         app_cfg: ResolvedAppConfig,
         records: List[TelemetryRecord],
+        window_start: str,
+        window_end: str,
     ) -> EvaluationResult:
         if policy_name not in self.policy_registry:
             raise KeyError(f"Policy not registered: {policy_name}")
@@ -74,6 +76,14 @@ class BatchEvaluationRunner:
         policy: EvaluationPolicy = policy_type(policy_cfg)
 
         metrics = await policy.evaluate(app_cfg.app_id, records)
+        metrics = self._normalize_metrics_for_traceability(
+            metrics=metrics,
+            app_id=app_cfg.app_id,
+            policy_name=policy_name,
+            policy_version=str(policy_cfg.parameters.get("version", "1.0")),
+            window_start=window_start,
+            window_end=window_end,
+        )
 
         return EvaluationResult(
             id=f"{app_cfg.app_id}:{policy_name}:{uuid4().hex}",
@@ -83,3 +93,33 @@ class BatchEvaluationRunner:
             metrics=metrics,
             breaches=[],
         )
+
+    def _normalize_metrics_for_traceability(
+        self,
+        metrics: List[MetricValueVersioned],
+        app_id: str,
+        policy_name: str,
+        policy_version: str,
+        window_start: str,
+        window_end: str,
+    ) -> List[MetricValueVersioned]:
+        normalized: List[MetricValueVersioned] = []
+        for metric in metrics:
+            if not metric.version:
+                metric.version = policy_version
+            if not metric.timestamp:
+                metric.timestamp = datetime.now(timezone.utc).isoformat()
+            if not metric.metric_type:
+                metric.metric_type = metric.metric_name
+            metric.metadata = {
+                **metric.metadata,
+                "app_id": app_id,
+                "policy_name": policy_name,
+                "policy_version": policy_version,
+                "value_object_type": "metric_value_versioned",
+                "value_object_version": metric.version,
+                "window_start": window_start,
+                "window_end": window_end,
+            }
+            normalized.append(metric)
+        return normalized

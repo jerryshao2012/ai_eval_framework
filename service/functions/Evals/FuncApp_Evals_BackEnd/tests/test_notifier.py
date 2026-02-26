@@ -6,14 +6,14 @@ from orchestration.notifier import filter_breaches_by_min_level, send_alerts
 def test_filter_breaches_by_min_level() -> None:
     breaches = [
         ThresholdBreach(
-            metric_name="accuracy",
+            metric_name="performance_precision_coherence",
             level="warning",
             threshold_value=0.93,
             actual_value=0.91,
             direction="min",
         ),
         ThresholdBreach(
-            metric_name="latency_p95_ms",
+            metric_name="system_reliability_latency",
             level="critical",
             threshold_value=2000,
             actual_value=2500,
@@ -35,7 +35,7 @@ def test_send_alerts_no_channel_enabled_noop() -> None:
     )
     breaches = [
         ThresholdBreach(
-            metric_name="accuracy",
+            metric_name="safety_toxicity",
             level="warning",
             threshold_value=0.93,
             actual_value=0.91,
