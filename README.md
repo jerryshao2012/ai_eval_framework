@@ -5,13 +5,14 @@ A modular Python framework for continuous monitoring of AI systems across multip
 ## Overview
 
 This project provides:
-- Configurable batch-triggered monitoring per application (with global fallback schedule).
-- Asynchronous policy execution (`asyncio`) for concurrent metric computation.
-- Cosmos DB storage for telemetry-derived evaluation data and evaluation results.
-- Versioned metric objects for traceability and replay.
-- Configurable warning/critical thresholds per metric.
-- A sample dashboard (Flask + Chart.js) for latest status, trends, and alerts.
-- Azure deployment recommendations for scheduling and event streaming.
+- Multi-policy AI evaluation (`accuracy`, `latency`, `drift`, `performance`) with async per-policy execution.
+- Versioned metric objects for traceability/replay, persisted as metrics-only evaluation documents in Cosmos DB.
+- Dual threshold modes: dashboard-time thresholding (with dynamic overrides) and batch-time in-memory thresholding for notifications.
+- Configurable threshold alerts through SMTP email and Microsoft Teams webhook channels.
+- Multi-application config inheritance (root defaults + app overrides), including unknown-app fallback to root defaults.
+- Horizontal scale-out batching with deterministic group sharding (`group_size`, `group_index`) and Azure Batch task submission support.
+- Batch execution observability: current status, history, aggregate statistics, and failed-item traceback/log drill-down.
+- API-first dashboard backend with OpenAPI/Swagger endpoints (`/api/openapi.json`, `/api/docs`).
 
 ## Why Cosmos DB SQL API
 
