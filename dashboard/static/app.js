@@ -59,6 +59,77 @@ function renderApps(items) {
   });
 }
 
+function renderBatchCurrent(run) {
+  const container = document.getElementById("batchCurrent");
+  if (!run) {
+    container.textContent = "No batch runs yet.";
+    return;
+  }
+  container.innerHTML = `
+    <div><strong>Run:</strong> ${run.run_id}</div>
+    <div><strong>Status:</strong> ${run.status}</div>
+    <div><strong>Started:</strong> ${run.started_at}</div>
+    <div><strong>Ended:</strong> ${run.ended_at ?? "in progress"}</div>
+    <div class="batch-stat">
+      total=${run.stats.total_items}, completed=${run.stats.completed_items},
+      failed=${run.stats.failed_items}, running=${run.stats.running_items},
+      pending=${run.stats.pending_items}, policy_runs=${run.stats.total_policy_runs},
+      breaches=${run.stats.total_breaches}, success_rate=${(run.stats.success_rate * 100).toFixed(1)}%
+    </div>
+  `;
+}
+
+function renderBatchHistory(runs) {
+  const container = document.getElementById("batchHistory");
+  container.innerHTML = "";
+  if (!runs.length) {
+    container.textContent = "No history.";
+    return;
+  }
+
+  runs.forEach((run) => {
+    const row = document.createElement("div");
+    row.className = "batch-row";
+
+    const failedItems = (run.items || []).filter((item) => item.status === "failed");
+    const failButtons = failedItems
+      .map(
+        (item) =>
+          `<button class="btn-trace" data-run-id="${run.run_id}" data-item-id="${item.item_id}">Trace ${item.item_id}</button>`
+      )
+      .join(" ");
+
+    row.innerHTML = `
+      <div><strong>${run.run_id}</strong> | ${run.status}</div>
+      <div class="batch-stat">${run.started_at} -> ${run.ended_at ?? "in progress"}</div>
+      <div class="batch-stat">total=${run.stats.total_items}, ok=${run.stats.completed_items}, failed=${run.stats.failed_items}</div>
+      <div>${failButtons || ""}</div>
+    `;
+    container.appendChild(row);
+  });
+
+  container.querySelectorAll(".btn-trace").forEach((btn) => {
+    btn.addEventListener("click", async (event) => {
+      const runId = event.target.getAttribute("data-run-id");
+      const itemId = event.target.getAttribute("data-item-id");
+      await loadTrace(runId, itemId);
+    });
+  });
+}
+
+async function loadTrace(runId, itemId) {
+  const header = document.getElementById("traceHeader");
+  const body = document.getElementById("traceLogs");
+  const detail = await fetchJson(`/api/batch/run/${runId}/item/${itemId}/logs`);
+  header.textContent = `Run=${runId}, Item=${itemId}, Status=${detail.status}`;
+
+  const logLines = (detail.logs || []).map(
+    (entry) => `[${entry.timestamp}] ${entry.level} ${entry.message}`
+  );
+  const trace = detail.traceback ? `\n\nTraceback:\n${detail.traceback}` : "";
+  body.textContent = `${logLines.join("\n")}${trace}`;
+}
+
 function renderAlerts(alerts) {
   const list = document.getElementById("alerts");
   list.innerHTML = "";
@@ -112,9 +183,13 @@ async function reloadDashboard() {
   const query = buildThresholdQuery();
   const latest = await fetchJson(`/api/latest${query}`);
   const alerts = await fetchJson(`/api/alerts${query}`);
+  const currentRun = await fetchJson("/api/batch/current");
+  const history = await fetchJson("/api/batch/history");
 
   renderApps(latest);
   renderAlerts(alerts);
+  renderBatchCurrent(currentRun);
+  renderBatchHistory(history);
 
   const select = document.getElementById("appSelect");
   select.innerHTML = "";

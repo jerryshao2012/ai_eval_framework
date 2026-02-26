@@ -74,3 +74,25 @@ section {
 .threshold-grid input {
   max-width: 220px;
 }
+
+.batch-row {
+  border-bottom: 1px solid #dbe8e6;
+  padding: 0.5rem 0;
+}
+
+.batch-stat {
+  font-size: 0.92rem;
+}
+
+#traceLogs {
+  background: #0f1720;
+  color: #dce5ee;
+  border-radius: 8px;
+  padding: 0.75rem;
+  min-height: 140px;
+  overflow-x: auto;
+}
+
+.btn-trace {
+  margin-top: 0.4rem;
+}

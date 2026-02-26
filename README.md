@@ -376,11 +376,19 @@ Dashboard capabilities:
 - Trend chart for selected application (accuracy, p95 latency, drift).
 - Alert list for threshold breaches.
 - Optional runtime threshold overrides without changing stored batch data.
+- Batch execution monitoring: current run status, history, aggregate statistics, and failed item trace logs.
 
 Key endpoints:
 - `GET /api/latest`
 - `GET /api/trends/<app_id>`
 - `GET /api/alerts`
+- `GET /api/thresholds`
+- `GET /api/batch/current`
+- `GET /api/batch/history`
+- `GET /api/batch/run/<run_id>`
+- `GET /api/batch/run/<run_id>/item/<item_id>/logs`
+- `GET /api/openapi.json` (OpenAPI spec)
+- `GET /api/docs` (Swagger UI)
 
 ## Testing
 

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, Response
 
 from config.loader import load_config
 from config.models import ThresholdConfig
@@ -13,6 +13,7 @@ from evaluation.thresholds import evaluate_thresholds
 
 BASE_DIR = Path(__file__).resolve().parent
 MOCK_FILE = BASE_DIR / "mock_results.json"
+STATUS_FILE = BASE_DIR / "batch_status.json"
 CONFIG_FILE = BASE_DIR.parent / "config" / "config.yaml"
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -24,8 +25,92 @@ except Exception:
     DEFAULT_THRESHOLD_MAP = {}
 
 
+def _openapi_spec() -> Dict[str, Any]:
+    return {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "AI Evaluation Dashboard API",
+            "version": "1.0.0",
+            "description": "APIs for evaluation metrics, alerts, thresholds, and batch job execution status.",
+        },
+        "paths": {
+            "/api/latest": {"get": {"summary": "Get latest app evaluation status"}},
+            "/api/trends/{app_id}": {
+                "get": {
+                    "summary": "Get trend points for one app",
+                    "parameters": [
+                        {"name": "app_id", "in": "path", "required": True, "schema": {"type": "string"}}
+                    ],
+                }
+            },
+            "/api/alerts": {"get": {"summary": "Get threshold breaches for latest data"}},
+            "/api/thresholds": {"get": {"summary": "Get active threshold configuration"}},
+            "/api/batch/current": {"get": {"summary": "Get current (or latest) batch run"}},
+            "/api/batch/history": {"get": {"summary": "Get batch run history"}},
+            "/api/batch/run/{run_id}": {
+                "get": {
+                    "summary": "Get details for a batch run",
+                    "parameters": [
+                        {"name": "run_id", "in": "path", "required": True, "schema": {"type": "string"}}
+                    ],
+                }
+            },
+            "/api/batch/run/{run_id}/item/{item_id}/logs": {
+                "get": {
+                    "summary": "Get item logs and traceback for one batch run item",
+                    "parameters": [
+                        {"name": "run_id", "in": "path", "required": True, "schema": {"type": "string"}},
+                        {"name": "item_id", "in": "path", "required": True, "schema": {"type": "string"}},
+                    ],
+                }
+            },
+            "/api/openapi.json": {"get": {"summary": "Get OpenAPI spec"}},
+            "/api/docs": {"get": {"summary": "Swagger UI documentation"}},
+        },
+    }
+
+
 def _load_mock_data() -> Dict[str, Any]:
     return json.loads(MOCK_FILE.read_text())
+
+
+def _load_status_data() -> Dict[str, Any]:
+    if not STATUS_FILE.exists():
+        return {"runs": []}
+    return json.loads(STATUS_FILE.read_text())
+
+
+def _compute_run_stats(run: Dict[str, Any]) -> Dict[str, Any]:
+    items = run.get("items", [])
+    total = len(items)
+    completed = sum(1 for i in items if i.get("status") == "completed")
+    failed = sum(1 for i in items if i.get("status") == "failed")
+    running = sum(1 for i in items if i.get("status") == "running")
+    pending = sum(1 for i in items if i.get("status") == "pending")
+    breaches = sum(int(i.get("breach_count", 0)) for i in items)
+    policy_runs = sum(int(i.get("policy_runs", 0)) for i in items)
+    return {
+        "total_items": total,
+        "completed_items": completed,
+        "failed_items": failed,
+        "running_items": running,
+        "pending_items": pending,
+        "total_breaches": breaches,
+        "total_policy_runs": policy_runs,
+        "success_rate": (completed / total) if total else 0.0,
+    }
+
+
+def _sorted_runs() -> List[Dict[str, Any]]:
+    data = _load_status_data()
+    runs = data.get("runs", [])
+    return sorted(runs, key=lambda r: r.get("started_at", ""), reverse=True)
+
+
+def _run_with_stats(run: Dict[str, Any]) -> Dict[str, Any]:
+    enriched = dict(run)
+    enriched["stats"] = _compute_run_stats(run)
+    return enriched
 
 
 def _clone_threshold_map(
@@ -153,6 +238,80 @@ def thresholds() -> Any:
     }
     dynamic = request.args.get("dynamic_thresholds", "").lower() in {"1", "true", "yes", "on"}
     return jsonify({"dynamic_thresholds": dynamic, "thresholds": serialized})
+
+
+@app.route("/api/batch/current")
+def batch_current() -> Any:
+    runs = _sorted_runs()
+    running = next((r for r in runs if r.get("status") == "running"), None)
+    run = running or (runs[0] if runs else None)
+    if run is None:
+        return jsonify(None)
+    return jsonify(_run_with_stats(run))
+
+
+@app.route("/api/batch/history")
+def batch_history() -> Any:
+    runs = [_run_with_stats(r) for r in _sorted_runs()]
+    return jsonify(runs)
+
+
+@app.route("/api/batch/run/<run_id>")
+def batch_run_detail(run_id: str) -> Any:
+    run = next((r for r in _sorted_runs() if r.get("run_id") == run_id), None)
+    if run is None:
+        return jsonify({"error": "run not found"}), 404
+    return jsonify(_run_with_stats(run))
+
+
+@app.route("/api/batch/run/<run_id>/item/<item_id>/logs")
+def batch_item_logs(run_id: str, item_id: str) -> Any:
+    run = next((r for r in _sorted_runs() if r.get("run_id") == run_id), None)
+    if run is None:
+        return jsonify({"error": "run not found"}), 404
+    item = next((i for i in run.get("items", []) if i.get("item_id") == item_id), None)
+    if item is None:
+        return jsonify({"error": "item not found"}), 404
+    return jsonify(
+        {
+            "run_id": run_id,
+            "item_id": item_id,
+            "status": item.get("status"),
+            "error": item.get("error"),
+            "traceback": item.get("traceback"),
+            "logs": item.get("logs", []),
+        }
+    )
+
+
+@app.route("/api/openapi.json")
+def openapi() -> Any:
+    return jsonify(_openapi_spec())
+
+
+@app.route("/api/docs")
+def docs() -> Response:
+    html = """<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Evaluation API Docs</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css" />
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
+    <script>
+      SwaggerUIBundle({
+        url: '/api/openapi.json',
+        dom_id: '#swagger-ui'
+      });
+    </script>
+  </body>
+</html>
+"""
+    return Response(html, mimetype="text/html")
 
 
 if __name__ == "__main__":

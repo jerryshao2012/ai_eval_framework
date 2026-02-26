@@ -3,8 +3,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import traceback
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
+from uuid import uuid4
 
 from config.loader import list_resolved_apps, load_config, resolve_app_config
 from config.models import ResolvedAppConfig
@@ -16,6 +19,7 @@ from data.repositories import (
 from evaluation.thresholds import evaluate_thresholds
 from orchestration.batch_partition import select_group, total_groups
 from orchestration.batch_runner import BatchEvaluationRunner
+from orchestration.job_tracking import FileJobStatusStore
 from orchestration.notifier import send_alerts
 from orchestration.scheduler import CronScheduler
 
@@ -117,33 +121,72 @@ async def run_batch(
         start,
         end,
     )
+    run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
+    status_store = FileJobStatusStore(Path(__file__).resolve().parent / "dashboard" / "batch_status.json")
+    status_store.start_run(
+        run_id=run_id,
+        app_ids=[app.app_id for app in target_apps],
+        window_start=start,
+        window_end=end,
+        group_size=group_size,
+        group_index=group_index,
+    )
 
     for app in target_apps:
-        results = await runner.run_for_application(app, start_ts=start, end_ts=end)
-        notification_breaches = []
-        for result in results:
-            notification_breaches.extend(evaluate_thresholds(result.metrics, app.thresholds))
-        total_breaches = len(notification_breaches)
-        next_run = scheduler.next_run_time(app, now=now)
-        logger.info(
-            "app_id=%s policy_runs=%d breaches=%d window=%s..%s",
-            app.app_id,
-            len(results),
-            total_breaches,
-            start,
-            end,
-        )
+        status_store.mark_item_running(run_id, app.app_id)
+        status_store.append_item_log(run_id, app.app_id, "INFO", "Evaluation started.")
         try:
-            send_alerts(
-                config=root_config.alerting,
-                app_id=app.app_id,
-                window_start=start,
-                window_end=end,
-                breaches=notification_breaches,
+            results = await runner.run_for_application(app, start_ts=start, end_ts=end)
+            notification_breaches = []
+            for result in results:
+                notification_breaches.extend(evaluate_thresholds(result.metrics, app.thresholds))
+            total_breaches = len(notification_breaches)
+            next_run = scheduler.next_run_time(app, now=now)
+            logger.info(
+                "app_id=%s policy_runs=%d breaches=%d window=%s..%s",
+                app.app_id,
+                len(results),
+                total_breaches,
+                start,
+                end,
             )
-        except Exception:
-            logger.exception("Failed to send alerts for app_id=%s", app.app_id)
-        logger.info("app_id=%s next_batch_run_utc=%s", app.app_id, next_run.isoformat())
+            status_store.append_item_log(
+                run_id,
+                app.app_id,
+                "INFO",
+                f"Evaluation completed: policy_runs={len(results)} breaches={total_breaches}",
+            )
+            try:
+                send_alerts(
+                    config=root_config.alerting,
+                    app_id=app.app_id,
+                    window_start=start,
+                    window_end=end,
+                    breaches=notification_breaches,
+                )
+                status_store.append_item_log(run_id, app.app_id, "INFO", "Alert notification step completed.")
+            except Exception:
+                logger.exception("Failed to send alerts for app_id=%s", app.app_id)
+                status_store.append_item_log(run_id, app.app_id, "ERROR", "Alert notification failed.")
+            logger.info("app_id=%s next_batch_run_utc=%s", app.app_id, next_run.isoformat())
+            status_store.mark_item_completed(
+                run_id=run_id,
+                item_id=app.app_id,
+                policy_runs=len(results),
+                breach_count=total_breaches,
+                next_batch_run_utc=next_run.isoformat(),
+            )
+        except Exception as exc:
+            trace = traceback.format_exc()
+            logger.exception("Batch item failed for app_id=%s", app.app_id)
+            status_store.append_item_log(run_id, app.app_id, "ERROR", f"Evaluation failed: {exc}")
+            status_store.mark_item_failed(
+                run_id=run_id,
+                item_id=app.app_id,
+                error=str(exc),
+                traceback=trace,
+            )
+    status_store.finalize_run(run_id)
 
 
 if __name__ == "__main__":
