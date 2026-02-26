@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
 from flask import Flask, jsonify, render_template, request, Response
+
+BASE_DIR = Path(__file__).resolve().parent
+MOCK_FILE = BASE_DIR / "mock_results.json"
+STATUS_FILE = BASE_DIR / "batch_status.json"
+BACKEND_ROOT = BASE_DIR.parent.parent / "FuncApp_Evals_BackEnd"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from config.loader import load_config
 from config.models import ThresholdConfig
 from data.models import MetricValueVersioned, ThresholdBreach
 from evaluation.thresholds import evaluate_thresholds
 
-BASE_DIR = Path(__file__).resolve().parent
-MOCK_FILE = BASE_DIR / "mock_results.json"
-STATUS_FILE = BASE_DIR / "batch_status.json"
-CONFIG_FILE = BASE_DIR.parent / "config" / "config.yaml"
+CONFIG_FILE = BACKEND_ROOT / "config" / "config.yaml"
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 

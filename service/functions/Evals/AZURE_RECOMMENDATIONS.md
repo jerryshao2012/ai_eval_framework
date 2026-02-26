@@ -34,7 +34,7 @@ Use **Azure Batch** as the compute plane and partition work into many small, ind
 Recommended implementation pattern:
 1. Scheduler (Functions Timer Trigger or external orchestrator) creates a job per time window.
 2. Partition workload into deterministic shards (for example, app groups using fixed `group_size` and `group_index`).
-3. Submit one Azure Batch task per shard with explicit retry policy (see `scripts/submit_azure_batch.py`).
+3. Submit one Azure Batch task per shard with explicit retry policy (see `FuncApp_Evals_BackEnd/scripts/submit_azure_batch.py`).
 4. Enable pool autoscaling so VM count follows queue depth.
 5. Keep tasks idempotent and checkpoint progress to durable storage to support retries/restarts.
 6. Persist outputs to Cosmos DB (and optional Blob staging) to avoid loss on node preemption.

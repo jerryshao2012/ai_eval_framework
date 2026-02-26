@@ -122,7 +122,9 @@ async def run_batch(
         end,
     )
     run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
-    status_store = FileJobStatusStore(Path(__file__).resolve().parent / "dashboard" / "batch_status.json")
+    status_store = FileJobStatusStore(
+        Path(__file__).resolve().parent.parent / "WebApp_Evals_FrontEnd" / "dashboard" / "batch_status.json"
+    )
     status_store.start_run(
         run_id=run_id,
         app_ids=[app.app_id for app in target_apps],

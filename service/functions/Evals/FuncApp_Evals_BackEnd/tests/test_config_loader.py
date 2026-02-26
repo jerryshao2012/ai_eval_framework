@@ -4,9 +4,12 @@ from pathlib import Path
 
 from config.loader import load_config, resolve_app_config
 
+BASE_DIR = Path(__file__).resolve().parents[1]
+CONFIG_PATH = str(BASE_DIR / "config" / "config.yaml")
+
 
 def test_load_config_parses_policies_and_thresholds() -> None:
-    cfg = load_config("config/config.yaml")
+    cfg = load_config(CONFIG_PATH)
 
     assert "app1" in cfg.applications
     assert "accuracy" in cfg.evaluation_policies
@@ -50,7 +53,7 @@ def test_missing_config_raises() -> None:
 
 def test_global_thresholds_merged_with_app_thresholds() -> None:
     """Per-app thresholds should override globals; non-overridden globals should persist."""
-    cfg = load_config("config/config.yaml")
+    cfg = load_config(CONFIG_PATH)
     app_cfg = resolve_app_config(cfg, "app1")
 
     # app1 overrides accuracy critical to 0.9 (global is 0.88)
@@ -110,7 +113,7 @@ def test_default_policies_fall_back_to_all_defined_policies(tmp_path: Path) -> N
 
 
 def test_unknown_app_id_uses_root_defaults() -> None:
-    cfg = load_config("config/config.yaml")
+    cfg = load_config(CONFIG_PATH)
 
     app_cfg = resolve_app_config(cfg, "app_not_configured")
 
