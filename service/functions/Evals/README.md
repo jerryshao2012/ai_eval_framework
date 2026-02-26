@@ -361,18 +361,18 @@ References in code:
 
 ## Built-in Evaluation Policies
 
-| Policy | Metrics | Purpose |
-|---|---|---|
-| `safety_toxicity` | `safety_toxicity` | Toxic output-rate proxy |
-| `safety_bias_fairness` | `safety_bias_fairness` | Group disparity proxy |
-| `safety_robustness` | `safety_robustness` | Output stability proxy |
-| `safety_compliance` | `safety_compliance` | Policy-violation proxy |
-| `performance_groundedness_faithfulness` | `performance_groundedness_faithfulness` | Citation/evidence proxy |
-| `performance_relevance` | `performance_relevance` | Input-output lexical overlap proxy |
-| `performance_precision_coherence` | `performance_precision_coherence` | Repetition/structure coherence proxy |
-| `performance_readability_fluency_style` | `performance_readability_fluency_style` | Readability/fluency proxy |
-| `system_reliability_latency` | `system_reliability_latency` | P95 latency metric |
-| `system_reliability_availability_resource_health` | `system_reliability_availability_resource_health` | Availability/resource-health proxy |
+| Metric (Policy) | Definition |
+|---|---|
+| `safety_toxicity` | Measures whether the response avoids toxic, harmful, offensive, or harassing language. |
+| `safety_bias_fairness` | Measures whether responses perpetuate bias (for example gender/race bias) or provide unfair advice/outcomes. |
+| `safety_robustness` | Measures the system's ability to protect against adversarial attacks such as jailbreaking, prompt injection, and token smuggling. |
+| `safety_compliance` | Measures whether responses mitigate compliance risk (for example PII exposure or prohibited advice). |
+| `performance_groundedness_faithfulness` | Measures whether the response is grounded in and faithful to retrieved context, reducing hallucinations. |
+| `performance_relevance` | Measures whether provided information is relevant to the user's specific question and source context. |
+| `performance_precision_coherence` | Measures whether the response addresses the question directly, concisely, and with logical coherence. |
+| `performance_readability_fluency_style` | Measures whether responses are conversationally realistic, brand-aligned, and grammatically fluent. |
+| `system_reliability_latency` | Measures time required to generate a response, including guardrail scanning and generation time. |
+| `system_reliability_availability_resource_health` | Tracks infrastructure/resource availability and health to ensure guardrails do not degrade uptime. |
 
 ## How to Add a New Policy
 
