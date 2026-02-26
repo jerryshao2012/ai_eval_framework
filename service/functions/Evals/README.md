@@ -425,6 +425,10 @@ python3 dashboard/app.py
 
 Open: `http://localhost:5000`
 
+Sample dashboard screenshot:
+
+![Dashboard Sample](WebApp_Evals_FrontEnd/dashboard/static/sample_dashboard.svg)
+
 Dashboard capabilities:
 - Applications list with latest evaluation status.
 - Trend chart for selected application (precision/coherence, system latency, safety toxicity by default).

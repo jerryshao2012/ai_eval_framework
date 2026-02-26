@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ecf7f4"/>
+      <stop offset="100%" stop-color="#f7fbfa"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="680" fill="url(#bg)"/>
+  <rect x="24" y="24" width="1152" height="72" rx="12" fill="#ffffff" stroke="#d7e8e3"/>
+  <text x="44" y="58" font-family="Segoe UI, Arial, sans-serif" font-size="28" fill="#173246">AI Evaluation Dashboard</text>
+  <text x="44" y="82" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#4f6b77">Latest status, trends, and threshold breaches</text>
+
+  <rect x="24" y="116" width="370" height="250" rx="12" fill="#ffffff" stroke="#d7e8e3"/>
+  <text x="42" y="146" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#173246">Applications</text>
+  <rect x="42" y="160" width="334" height="84" rx="10" fill="#f8fcfb" stroke="#d7e8e3"/>
+  <text x="58" y="188" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#173246">app1</text>
+  <text x="58" y="212" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#b26e00">WARNING</text>
+  <text x="58" y="232" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#355462">performance_precision_coherence: 0.72</text>
+  <rect x="42" y="254" width="334" height="94" rx="10" fill="#f8fcfb" stroke="#d7e8e3"/>
+  <text x="58" y="282" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#173246">app2</text>
+  <text x="58" y="306" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#1f8a70">HEALTHY</text>
+  <text x="58" y="326" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#355462">system_reliability_latency: 900</text>
+
+  <rect x="412" y="116" width="764" height="250" rx="12" fill="#ffffff" stroke="#d7e8e3"/>
+  <text x="430" y="146" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#173246">Trends</text>
+  <line x1="446" y1="330" x2="1142" y2="330" stroke="#cddfd9"/>
+  <line x1="446" y1="180" x2="446" y2="330" stroke="#cddfd9"/>
+  <polyline points="470,300 560,278 650,262 740,250 830,238 920,224 1010,212 1100,204" fill="none" stroke="#1f8a70" stroke-width="3"/>
+  <polyline points="470,290 560,292 650,280 740,274 830,260 920,246 1010,232 1100,216" fill="none" stroke="#f07167" stroke-width="3"/>
+  <text x="450" y="355" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#355462">Performance Precision Coherence (green) / System Reliability Latency (orange)</text>
+
+  <rect x="24" y="384" width="560" height="272" rx="12" fill="#ffffff" stroke="#d7e8e3"/>
+  <text x="42" y="414" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#173246">Batch Execution</text>
+  <text x="42" y="438" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#355462">Run: run-20260226-abc123 | Status: partial_failed</text>
+  <text x="42" y="460" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#355462">total=20, completed=19, failed=1, success_rate=95%</text>
+  <text x="42" y="492" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#173246">History</text>
+  <text x="42" y="515" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#355462">run-20260225-xyz987 | completed</text>
+  <text x="42" y="536" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#355462">run-20260224-lmn456 | partial_failed (Trace app2)</text>
+
+  <rect x="602" y="384" width="574" height="130" rx="12" fill="#ffffff" stroke="#d7e8e3"/>
+  <text x="620" y="414" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#173246">Alerts</text>
+  <text x="620" y="438" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#355462">• safety_toxicity warning: actual=0.88 threshold=0.90</text>
+  <text x="620" y="460" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#355462">• system_reliability_latency warning: actual=1300 threshold=1200</text>
+
+  <rect x="602" y="526" width="574" height="130" rx="12" fill="#0f1720" stroke="#0f1720"/>
+  <text x="620" y="556" font-family="Consolas, Menlo, monospace" font-size="16" fill="#dce5ee">Failed Item Trace Logs</text>
+  <text x="620" y="580" font-family="Consolas, Menlo, monospace" font-size="12" fill="#dce5ee">[2026-02-26T02:31:11Z] ERROR Evaluation failed: Cosmos query timeout</text>
+  <text x="620" y="600" font-family="Consolas, Menlo, monospace" font-size="12" fill="#dce5ee">Traceback (most recent call last): ...</text>
+</svg>
