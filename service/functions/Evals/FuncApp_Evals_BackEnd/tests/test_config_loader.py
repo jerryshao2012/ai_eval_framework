@@ -132,6 +132,10 @@ def test_alerting_config_parsed_from_json(tmp_path: Path) -> None:
         "alerting": {
             "enabled": True,
             "min_level": "critical",
+            "batch_window_seconds": 2.5,
+            "shutdown_drain_timeout_seconds": 22,
+            "circuit_failure_threshold": 4,
+            "circuit_recovery_timeout_seconds": 75,
             "email": {
                 "enabled": True,
                 "smtp_host": "smtp.example.com",
@@ -152,6 +156,10 @@ def test_alerting_config_parsed_from_json(tmp_path: Path) -> None:
     cfg = load_config(str(file_path))
     assert cfg.alerting.enabled is True
     assert cfg.alerting.min_level == "critical"
+    assert cfg.alerting.batch_window_seconds == 2.5
+    assert cfg.alerting.shutdown_drain_timeout_seconds == 22
+    assert cfg.alerting.circuit_failure_threshold == 4
+    assert cfg.alerting.circuit_recovery_timeout_seconds == 75
     assert cfg.alerting.email.enabled is True
     assert cfg.alerting.email.smtp_port == 2525
     assert cfg.alerting.email.to_addresses == ["a@example.com", "b@example.com"]

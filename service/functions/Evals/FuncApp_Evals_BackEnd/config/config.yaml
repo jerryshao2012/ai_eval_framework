@@ -137,6 +137,10 @@ global_thresholds:
 alerting:
   enabled: false
   min_level: "warning"
+  batch_window_seconds: 5.0
+  shutdown_drain_timeout_seconds: 15.0
+  circuit_failure_threshold: 3
+  circuit_recovery_timeout_seconds: 60.0
   email:
     enabled: false
     smtp_host: "${ALERT_SMTP_HOST}"

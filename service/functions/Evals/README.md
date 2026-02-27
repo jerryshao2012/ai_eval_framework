@@ -198,12 +198,22 @@ Policy computation optimization behavior:
 - Token extraction, lowercasing, sentence counting, and unique-token ratio are computed once per text and reused.
 - Set intersection checks use `isdisjoint` where appropriate to reduce intermediate allocations.
 
+Alerting optimization behavior:
+- Alerts are enqueued asynchronously so application evaluation is not blocked by SMTP/webhook latency.
+- Alerts are batched for a short window and aggregated per app to reduce notification frequency.
+- Email and Teams channels are protected by circuit breakers to fast-fail unhealthy downstream services.
+- Batch shutdown drains the alert queue with a bounded timeout to avoid dropping queued notifications.
+
 Alerting example:
 
 ```yaml
 alerting:
   enabled: true
   min_level: "warning"  # warning | critical
+  batch_window_seconds: 5.0
+  shutdown_drain_timeout_seconds: 15.0
+  circuit_failure_threshold: 3
+  circuit_recovery_timeout_seconds: 60.0
   email:
     enabled: true
     smtp_host: "${ALERT_SMTP_HOST}"
