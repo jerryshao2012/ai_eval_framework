@@ -10,6 +10,7 @@ from flask import Flask, jsonify, render_template, request, Response
 BASE_DIR = Path(__file__).resolve().parent
 MOCK_FILE = BASE_DIR / "mock_results.json"
 STATUS_FILE = BASE_DIR / "batch_status.json"
+STATUS_DB_FILE = BASE_DIR / "batch_status.db"
 BACKEND_ROOT = BASE_DIR.parent.parent / "FuncApp_Evals_BackEnd"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -18,6 +19,7 @@ from config.loader import load_config
 from config.models import ThresholdConfig
 from data.models import MetricValueVersioned, ThresholdBreach
 from evaluation.thresholds import evaluate_thresholds
+from orchestration.job_tracking import SqliteJobStatusStore
 
 CONFIG_FILE = BACKEND_ROOT / "config" / "config.yaml"
 
@@ -80,6 +82,12 @@ def _load_mock_data() -> Dict[str, Any]:
 
 
 def _load_status_data() -> Dict[str, Any]:
+    if STATUS_DB_FILE.exists():
+        store = SqliteJobStatusStore(STATUS_DB_FILE)
+        try:
+            return {"runs": store.load_runs()}
+        finally:
+            store.close()
     if not STATUS_FILE.exists():
         return {"runs": []}
     return json.loads(STATUS_FILE.read_text())

@@ -13,6 +13,7 @@ This project provides:
 - Multi-application config inheritance (root defaults + app overrides), including unknown-app fallback to root defaults.
 - Horizontal scale-out batching with deterministic group sharding (`group_size`, `group_index`) and Azure Batch task submission support.
 - Batch execution observability: current status, history, aggregate statistics, and failed-item traceback/log drill-down.
+  Backed by SQLite job tracking (`batch_status.db`) with WAL + lock-safe updates.
 - API-first dashboard backend with OpenAPI/Swagger endpoints (`/api/openapi.json`, `/api/docs`).
 
 Continuous Monitoring taxonomy sync:
@@ -612,6 +613,7 @@ WHERE c.type = 'evaluation_result' AND b.level = 'critical'
 ## Sample Dashboard
 
 The sample dashboard is in `WebApp_Evals_FrontEnd/dashboard/` and uses Flask endpoints with mock JSON data.
+For batch run status, dashboard endpoints read from `batch_status.db` when present (with legacy `batch_status.json` fallback).
 
 Run:
 
