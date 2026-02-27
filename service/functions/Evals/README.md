@@ -1,10 +1,11 @@
-# AI Evaluation Framework (Python + Azure Cosmos DB)
+# AI Evaluation Framework (Python + OpenTelemetry + Azure Cosmos DB)
 
-A modular Python framework for continuous monitoring of AI systems across multiple applications, triggered by configurable batch jobs and backed by Azure Cosmos DB.
+A modular Python framework for continuous monitoring of AI systems across multiple applications, triggered by configurable batch jobs, with telemetry from OpenTelemetry OTLP and/or Cosmos DB, and persisted evaluation results in Azure Cosmos DB.
 
 ## Overview
 
 This project provides:
+- Dual telemetry source support for batch evaluation: `telemetry_source.type=cosmos` or `telemetry_source.type=otlp`.
 - Multi-policy AI evaluation using Continuous Monitoring metric names (for example `safety_toxicity`, `performance_precision_coherence`, `system_reliability_latency`) with async per-policy execution.
 - Versioned metric objects for traceability/replay, persisted as metrics-only evaluation documents in Cosmos DB.
 - Dual threshold modes: dashboard-time thresholding (with dynamic overrides) and batch-time in-memory thresholding for notifications.

@@ -1,4 +1,4 @@
-# Azure PoT Roadmap for AI Evaluation Framework
+# Azure PoT Roadmap for AI Evaluation Framework (OpenTelemetry + Cosmos)
 
 ## Purpose
 
@@ -13,7 +13,7 @@ This document defines a **Proof of Technology (PoT)** rollout plan to implement 
 - Existing codebase under:
   - `service/functions/Evals/FuncApp_Evals_BackEnd`
   - `service/functions/Evals/WebApp_Evals_FrontEnd`
-- Cosmos DB SQL API is the source of truth for telemetry and evaluation results.
+- Cosmos DB SQL API is the durable store for telemetry/evaluation results; telemetry input can come from Cosmos ingestion flow or direct OTLP source mode.
 - Duplicate prevention contract:
   - `app_id + policy_name + trace_id + value_object_version`
   - deterministic fallback when trace ID is unavailable.

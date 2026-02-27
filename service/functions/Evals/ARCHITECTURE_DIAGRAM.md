@@ -1,6 +1,6 @@
-# AI Evals Architecture Diagram
+# AI Evals Architecture Diagram (Azure + OpenTelemetry)
 
-This diagram includes Azure services and implementation building blocks used by this repository.
+This diagram includes Azure services, OpenTelemetry integration paths, and implementation building blocks used by this repository.
 
 ```mermaid
 flowchart LR

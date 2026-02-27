@@ -1,6 +1,6 @@
-# Azure Cloud Services and Configuration Steps
+# Azure Cloud Services and OpenTelemetry Configuration Steps
 
-This document lists the Azure services used (or recommended) by this AI Evals solution and gives concrete setup steps for each.
+This document lists the Azure services used (or recommended) by this AI Evals solution and gives concrete setup steps for each, including OpenTelemetry integration points.
 
 ## Service List
 
@@ -12,6 +12,7 @@ This document lists the Azure services used (or recommended) by this AI Evals so
 6. Azure Storage Account (for Function/Batch support)
 7. Azure Monitor + Application Insights
 8. Azure Key Vault
+9. OpenTelemetry (OTLP) exporters/collector integration (implementation-level dependency)
 
 ---
 
@@ -155,6 +156,21 @@ Steps:
 
 ---
 
+## 9) OpenTelemetry (OTLP) Integration
+
+Purpose:
+- Standardized telemetry export path for traces/events used by AI evaluation (`telemetry_source.type=otlp` and `POST /api/otlp/v1/traces`).
+
+Steps:
+1. Enable OpenTelemetry instrumentation in producer applications/services.
+2. Configure OTLP exporter endpoint/protocol for your deployment model.
+3. Ensure telemetry includes `app_id`, timestamps, model metadata, and trace identity (`trace_id`).
+4. Validate OTLP payload compatibility with evaluator endpoint.
+5. Confirm dedupe behavior:
+   - deterministic evaluation ID uses `app_id + policy_name + trace_id + value_object_version`.
+
+---
+
 ## Deployment Order (Recommended)
 
 1. Resource Group
@@ -175,4 +191,5 @@ Steps:
 - `EVENTHUB_CONNECTION_STRING`
 - `EVENTHUB_NAME`
 - `EVENTHUB_CONSUMER_GROUP` (optional)
+- `OTLP_TELEMETRY_FILE_PATH` (when using batch `telemetry_source.type=otlp`)
 - `ALERT_*` values (optional, for email/Teams alerts)

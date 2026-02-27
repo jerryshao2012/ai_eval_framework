@@ -1,6 +1,6 @@
 # Repository Layout
 
-This repository now follows the requested pod structure for AI Evals:
+This repository follows the requested pod structure for AI Evals, including Azure + OpenTelemetry based telemetry/evaluation workflows:
 
 ```text
 service/

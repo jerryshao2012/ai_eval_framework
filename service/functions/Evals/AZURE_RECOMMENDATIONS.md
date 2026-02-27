@@ -3,6 +3,10 @@
 For concrete provisioning/configuration steps per Azure service, see:
 - `AZURE_SERVICES_SETUP.md`
 
+This solution supports two telemetry ingestion modes:
+- Event-driven ingestion via Azure Event Hubs + processor into Cosmos DB telemetry.
+- Direct OpenTelemetry OTLP ingestion/evaluation path (`POST /api/otlp/v1/traces`), with the same dedupe/versioning contract for evaluation results.
+
 ## Batch Job Management Options
 
 ### 1) Azure Functions (Timer Trigger)
