@@ -81,6 +81,8 @@ class AlertingConfig:
 @dataclass
 class RootConfig:
     default_batch_time: str
+    batch_app_concurrency: int = 10
+    batch_policy_concurrency: int = 10
     evaluation_policies: Dict[str, PolicyConfig] = field(default_factory=dict)
     default_evaluation_policies: List[str] = field(default_factory=list)
     global_thresholds: Dict[str, List[ThresholdConfig]] = field(default_factory=dict)

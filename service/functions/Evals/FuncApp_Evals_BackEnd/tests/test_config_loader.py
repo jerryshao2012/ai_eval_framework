@@ -181,6 +181,27 @@ def test_telemetry_source_otlp_parsed_from_json(tmp_path: Path) -> None:
     assert cfg.telemetry_source.otlp_file_path == "/tmp/otlp.json"
 
 
+def test_batch_concurrency_parsed_from_json(tmp_path: Path) -> None:
+    payload = {
+        "default_batch_time": "0 * * * *",
+        "batch_app_concurrency": 4,
+        "batch_policy_concurrency": 3,
+        "evaluation_policies": {
+            "performance_precision_coherence": {
+                "metrics": ["performance_precision_coherence"],
+                "parameters": {},
+            }
+        },
+        "app_config": {"appx": {}},
+    }
+    file_path = tmp_path / "cfg.json"
+    file_path.write_text(json.dumps(payload))
+
+    cfg = load_config(str(file_path))
+    assert cfg.batch_app_concurrency == 4
+    assert cfg.batch_policy_concurrency == 3
+
+
 def test_cosmos_resilience_settings_parsed_from_json(tmp_path: Path) -> None:
     payload = {
         "default_batch_time": "0 * * * *",

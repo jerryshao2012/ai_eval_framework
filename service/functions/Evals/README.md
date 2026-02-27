@@ -119,6 +119,8 @@ Configuration supports **root defaults** plus **application-specific overrides**
 
 ### Root configuration (global)
 - `default_batch_time`: fallback schedule when app-level schedule is missing.
+- `batch_app_concurrency`: max concurrent applications processed in one batch run.
+- `batch_policy_concurrency`: max concurrent policy evaluations per application.
 - `evaluation_policies`: policy definitions and parameters.
 - `default_evaluation_policies`: default policies for apps that do not define `evaluation_policies`.
   If omitted, all policy names defined in `evaluation_policies` are used.
@@ -145,6 +147,8 @@ Example:
 
 ```yaml
 default_batch_time: "0 * * * *"
+batch_app_concurrency: 10
+batch_policy_concurrency: 10
 default_evaluation_policies:
   - safety_toxicity
   - performance_precision_coherence
@@ -163,6 +167,12 @@ app_config:
     metadata:
       project_code: "PROJ-APP3"
 ```
+
+Batch optimization behavior:
+- App execution is parallelized with bounded concurrency (`batch_app_concurrency` or `--app-concurrency`).
+- Policy execution inside each app is parallelized with bounded concurrency (`batch_policy_concurrency` or `--policy-concurrency`).
+- Duplicate checks use bulk existence lookup with a single `IN` query per chunk instead of one query per policy.
+- Result writes are persisted in batched upserts (grouped by partition key) to reduce write amplification.
 
 Alerting example:
 
@@ -240,6 +250,7 @@ Manual run examples:
 cd service/functions/Evals/FuncApp_Evals_BackEnd
 python3 main.py --config config/config.yaml --window-hours 24
 python3 main.py --config config/config.yaml --app-id app1 --window-hours 6
+python3 main.py --config config/config.yaml --app-concurrency 8 --policy-concurrency 4
 python3 main.py --config config/config.yaml --log-level DEBUG
 ```
 

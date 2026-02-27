@@ -1,7 +1,9 @@
+import asyncio
+
 import pytest
 
 from config.models import PolicyConfig, ResolvedAppConfig, ThresholdConfig
-from data.models import TelemetryRecord
+from data.models import MetricValueVersioned, TelemetryRecord
 from data.repositories import (
     InMemoryEvaluationRepository,
     InMemoryStore,
@@ -196,3 +198,100 @@ async def test_batch_runner_recomputes_when_value_object_version_changes() -> No
     # latency policy has no explicit version and remains deduped at default 1.0
     assert len(second) == 1
     assert second[0].policy_name == "performance_precision_coherence"
+
+
+class _SpyEvaluationRepository(InMemoryEvaluationRepository):
+    def __init__(self, store: InMemoryStore) -> None:
+        super().__init__(store)
+        self.results_exist_calls = 0
+        self.result_exists_calls = 0
+        self.save_results_calls = 0
+
+    async def result_exists(self, result_id: str) -> bool:
+        self.result_exists_calls += 1
+        return await super().result_exists(result_id)
+
+    async def results_exist(self, result_ids: list[str]) -> list[str]:
+        self.results_exist_calls += 1
+        return await super().results_exist(result_ids)
+
+    async def save_results(self, results):
+        self.save_results_calls += 1
+        await super().save_results(results)
+
+
+@pytest.mark.asyncio
+async def test_batch_runner_uses_bulk_existence_check_and_batch_write() -> None:
+    store = InMemoryStore(telemetry=list(_TELEMETRY), results=[])
+    repo = _SpyEvaluationRepository(store)
+    runner = BatchEvaluationRunner(
+        InMemoryTelemetryRepository(store),
+        repo,
+    )
+
+    results = await runner.run_for_application(
+        _APP_CFG,
+        start_ts="2026-02-24T00:00:00Z",
+        end_ts="2026-02-24T23:59:59Z",
+    )
+
+    assert len(results) == 2
+    assert repo.results_exist_calls == 1
+    assert repo.result_exists_calls == 0
+    assert repo.save_results_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_runner_respects_policy_concurrency_limit() -> None:
+    store = InMemoryStore(telemetry=list(_TELEMETRY), results=[])
+    runner = BatchEvaluationRunner(
+        InMemoryTelemetryRepository(store),
+        InMemoryEvaluationRepository(store),
+        policy_concurrency=2,
+    )
+
+    class SlowPolicy:
+        inflight = 0
+        max_inflight = 0
+
+        def __init__(self, cfg):
+            _ = cfg
+
+        async def evaluate(self, app_id, records):
+            _ = app_id
+            _ = records
+            SlowPolicy.inflight += 1
+            SlowPolicy.max_inflight = max(SlowPolicy.max_inflight, SlowPolicy.inflight)
+            await asyncio.sleep(0.05)
+            SlowPolicy.inflight -= 1
+            return [
+                MetricValueVersioned(
+                    metric_name="performance_precision_coherence",
+                    value=1.0,
+                    version="1.0",
+                    timestamp="2026-02-24T00:00:00Z",
+                )
+            ]
+
+    cfg = ResolvedAppConfig(
+        app_id="app1",
+        batch_time="0 * * * *",
+        policy_names=["p1", "p2", "p3", "p4"],
+        policies=[
+            PolicyConfig(name="p1", metrics=["performance_precision_coherence"], parameters={}),
+            PolicyConfig(name="p2", metrics=["performance_precision_coherence"], parameters={}),
+            PolicyConfig(name="p3", metrics=["performance_precision_coherence"], parameters={}),
+            PolicyConfig(name="p4", metrics=["performance_precision_coherence"], parameters={}),
+        ],
+        thresholds={},
+    )
+    runner.policy_registry = {name: SlowPolicy for name in cfg.policy_names}
+
+    results = await runner.run_for_application(
+        cfg,
+        start_ts="2026-02-24T00:00:00Z",
+        end_ts="2026-02-24T23:59:59Z",
+    )
+
+    assert len(results) == 4
+    assert SlowPolicy.max_inflight <= 2

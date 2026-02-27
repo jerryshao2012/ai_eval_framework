@@ -15,10 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 class BatchEvaluationRunner:
-    def __init__(self, telemetry_repo: TelemetryRepository, evaluation_repo: EvaluationRepository) -> None:
+    def __init__(
+        self,
+        telemetry_repo: TelemetryRepository,
+        evaluation_repo: EvaluationRepository,
+        policy_concurrency: int = 10,
+    ) -> None:
         self.telemetry_repo = telemetry_repo
         self.evaluation_repo = evaluation_repo
         self.policy_registry = build_policy_registry()
+        self._policy_concurrency = max(1, int(policy_concurrency))
 
     async def run_for_application(
         self,
@@ -39,10 +45,46 @@ class BatchEvaluationRunner:
         records = await self.telemetry_repo.fetch_telemetry(app_cfg.app_id, start, end)
         logger.debug("Fetched %d telemetry records for app_id=%s", len(records), app_cfg.app_id)
 
-        tasks = [
-            self._evaluate_policy(policy_name, app_cfg, records, start, end)
-            for policy_name in app_cfg.policy_names
-        ]
+        dedupe_trace_id = self._derive_trace_identity(records, start, end)
+        
+        # Pre-calculate all expected result IDs to bulk check for duplicates
+        expected_ids = []
+        for policy_name in app_cfg.policy_names:
+            policy_cfg = next((p for p in app_cfg.policies if p.name == policy_name), None)
+            if policy_cfg:
+                policy_version = str(policy_cfg.parameters.get("version", "1.0"))
+                rid = self._stable_batch_result_id(
+                    app_cfg.app_id, policy_name, dedupe_trace_id, policy_version
+                )
+                expected_ids.append(rid)
+
+        existing_ids = set()
+        if expected_ids:
+            existing_list = await self.evaluation_repo.results_exist(expected_ids)
+            existing_ids = set(existing_list)
+            if existing_ids:
+                logger.info(
+                    "Skipping %d/%d previously evaluated policies for app_id=%s",
+                    len(existing_ids),
+                    len(expected_ids),
+                    app_cfg.app_id,
+                )
+
+        policy_sem = asyncio.Semaphore(self._policy_concurrency)
+
+        async def _run_policy(policy_name: str) -> EvaluationResult | None:
+            async with policy_sem:
+                return await self._evaluate_policy(
+                    policy_name,
+                    app_cfg,
+                    records,
+                    start,
+                    end,
+                    dedupe_trace_id,
+                    existing_ids,
+                )
+
+        tasks = [_run_policy(policy_name) for policy_name in app_cfg.policy_names]
         results = await asyncio.gather(*tasks)
         results = [result for result in results if result is not None]
 
@@ -64,6 +106,8 @@ class BatchEvaluationRunner:
         records: List[TelemetryRecord],
         window_start: str,
         window_end: str,
+        dedupe_trace_id: str,
+        existing_result_ids: set[str],
     ) -> EvaluationResult | None:
         if policy_name not in self.policy_registry:
             raise KeyError(f"Policy not registered: {policy_name}")
@@ -73,21 +117,13 @@ class BatchEvaluationRunner:
             raise KeyError(f"Policy config missing for: {policy_name}")
 
         policy_version = str(policy_cfg.parameters.get("version", "1.0"))
-        dedupe_trace_id = self._derive_trace_identity(records, window_start, window_end)
         result_id = self._stable_batch_result_id(
             app_id=app_cfg.app_id,
             policy_name=policy_name,
             trace_id=dedupe_trace_id,
             value_object_version=policy_version,
         )
-        if await self.evaluation_repo.result_exists(result_id):
-            logger.info(
-                "Skipping duplicate evaluation: app_id=%s policy=%s trace_id=%s version=%s",
-                app_cfg.app_id,
-                policy_name,
-                dedupe_trace_id,
-                policy_version,
-            )
+        if result_id in existing_result_ids:
             return None
 
         policy_type = self.policy_registry[policy_name]

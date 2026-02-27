@@ -216,6 +216,12 @@ def load_config(config_path: str) -> RootConfig:
 
     return RootConfig(
         default_batch_time=raw.get("default_batch_time", "0 * * * *"),
+        batch_app_concurrency=int(
+            raw.get("batch_app_concurrency", os.getenv("BATCH_APP_CONCURRENCY", 10))
+        ),
+        batch_policy_concurrency=int(
+            raw.get("batch_policy_concurrency", os.getenv("BATCH_POLICY_CONCURRENCY", 10))
+        ),
         evaluation_policies=parsed_policies,
         default_evaluation_policies=default_policy_names,
         global_thresholds=_parse_thresholds(raw.get("global_thresholds", {})),

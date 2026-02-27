@@ -1,4 +1,6 @@
 default_batch_time: "0 * * * *"
+batch_app_concurrency: 10
+batch_policy_concurrency: 10
 default_evaluation_policies:
   - safety_toxicity
   - safety_bias_fairness

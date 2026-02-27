@@ -30,6 +30,9 @@ class EvaluationRepository(Protocol):
     async def result_exists(self, result_id: str) -> bool:
         ...
 
+    async def results_exist(self, result_ids: List[str]) -> List[str]:
+        ...
+
 
 class CosmosTelemetryRepository:
     def __init__(self, client: CosmosDbClient) -> None:
@@ -57,6 +60,7 @@ class CosmosTelemetryRepository:
 class CosmosEvaluationRepository:
     def __init__(self, client: CosmosDbClient) -> None:
         self._client = client
+        self._exists_query_chunk_size = 100
 
     async def save_result(self, result: EvaluationResult) -> None:
         await asyncio.to_thread(self._client.upsert_result, result.to_dict())
@@ -117,6 +121,26 @@ class CosmosEvaluationRepository:
 
         return await asyncio.to_thread(_fetch)
 
+    async def results_exist(self, result_ids: List[str]) -> List[str]:
+        if not result_ids:
+            return []
+
+        def _fetch() -> List[str]:
+            found: List[str] = []
+            for start in range(0, len(result_ids), self._exists_query_chunk_size):
+                chunk = result_ids[start : start + self._exists_query_chunk_size]
+                parameters = [{"name": f"@id{i}", "value": rid} for i, rid in enumerate(chunk)]
+                placeholders = ", ".join(p["name"] for p in parameters)
+                query = (
+                    "SELECT c.id FROM c WHERE c.type = 'evaluation_result' "
+                    f"AND c.id IN ({placeholders})"
+                )
+                rows = self._client.query_results(query, parameters)
+                found.extend(row["id"] for row in rows)
+            return found
+
+        return await asyncio.to_thread(_fetch)
+
 
 @dataclass
 class InMemoryStore:
@@ -152,6 +176,10 @@ class InMemoryEvaluationRepository:
 
     async def result_exists(self, result_id: str) -> bool:
         return any(r.id == result_id for r in self._store.results)
+
+    async def results_exist(self, result_ids: List[str]) -> List[str]:
+        existing = {r.id for r in self._store.results}
+        return [rid for rid in result_ids if rid in existing]
 
 
 def _pick_telemetry_fields(row: Dict[str, Any]) -> Dict[str, Any]:

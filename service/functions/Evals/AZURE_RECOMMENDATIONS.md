@@ -34,6 +34,12 @@ This solution supports two telemetry ingestion modes:
 - Use Durable Functions for fan-out by `app_id` and policy for concurrent evaluations.
 - Move heavy metric computations to Azure Batch when CPU demand grows.
 
+Current implementation optimizations:
+- App-level execution uses bounded concurrency (configurable), rather than fully serial app loops.
+- Policy execution per app uses bounded concurrency (configurable) to increase throughput while controlling CPU pressure.
+- Duplicate detection uses bulk existence checks (`IN` query per chunk) to avoid one round-trip per policy.
+- Evaluation result writes are batched by partition key using Cosmos bulk/transactional batch APIs with fallback to individual upserts.
+
 ## Best Practice for Large, Heavy Calculation Batch Jobs in Azure
 
 Use **Azure Batch** as the compute plane and partition work into many small, independent tasks.
