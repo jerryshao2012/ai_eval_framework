@@ -670,6 +670,7 @@ Dashboard capabilities:
 - Batch execution monitoring: current run status, history, aggregate statistics, and failed item trace logs.
 - Concurrent dashboard data loading (`Promise.all`) to reduce initial render latency.
 - Client-side TTL caching for frequently requested API resources (latest, alerts, batch status, trends).
+- Server-side file cache with mtime invalidation for file-backed dashboard APIs (`/api/latest`, `/api/alerts`, batch status endpoints).
 - Server-backed pagination for batch history (`page`, `page_size`) to avoid rendering large history lists at once.
 - Debounced trend updates and in-place chart dataset updates to avoid full chart re-creation churn.
 

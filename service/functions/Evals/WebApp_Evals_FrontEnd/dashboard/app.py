@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -20,6 +21,7 @@ from config.models import ThresholdConfig
 from data.models import MetricValueVersioned, ThresholdBreach
 from evaluation.thresholds import evaluate_thresholds
 from orchestration.job_tracking import SqliteJobStatusStore
+from typing import Tuple
 
 CONFIG_FILE = BACKEND_ROOT / "config" / "config.yaml"
 
@@ -85,20 +87,56 @@ def _openapi_spec() -> Dict[str, Any]:
     }
 
 
+class FileCache:
+    def __init__(self) -> None:
+        self._cache: Dict[str, Tuple[int, Any]] = {}
+        self._lock = threading.Lock()
+
+    def get_or_load(self, path: Path, loader_func: Any) -> Any:
+        key = str(path)
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except FileNotFoundError:
+            # Ensure stale cache is not served if file is removed.
+            with self._lock:
+                self._cache.pop(key, None)
+            return loader_func()
+
+        with self._lock:
+            cached_mtime_ns, cached_data = self._cache.get(key, (0, None))
+        if mtime_ns != cached_mtime_ns or cached_data is None:
+            data = loader_func()
+            with self._lock:
+                self._cache[key] = (mtime_ns, data)
+            return data
+
+        return cached_data
+
+_FILE_CACHE = FileCache()
+
+
 def _load_mock_data() -> Dict[str, Any]:
-    return json.loads(MOCK_FILE.read_text())
+    def _loader() -> Dict[str, Any]:
+        return json.loads(MOCK_FILE.read_text())
+    return _FILE_CACHE.get_or_load(MOCK_FILE, _loader)
 
 
 def _load_status_data() -> Dict[str, Any]:
     if STATUS_DB_FILE.exists():
-        store = SqliteJobStatusStore(STATUS_DB_FILE)
-        try:
-            return {"runs": store.load_runs()}
-        finally:
-            store.close()
+        def _db_loader() -> Dict[str, Any]:
+            store = SqliteJobStatusStore(STATUS_DB_FILE)
+            try:
+                return {"runs": store.load_runs()}
+            finally:
+                store.close()
+        return _FILE_CACHE.get_or_load(STATUS_DB_FILE, _db_loader)
+        
     if not STATUS_FILE.exists():
         return {"runs": []}
-    return json.loads(STATUS_FILE.read_text())
+        
+    def _json_loader() -> Dict[str, Any]:
+        return json.loads(STATUS_FILE.read_text())
+    return _FILE_CACHE.get_or_load(STATUS_FILE, _json_loader)
 
 
 def _compute_run_stats(run: Dict[str, Any]) -> Dict[str, Any]:
