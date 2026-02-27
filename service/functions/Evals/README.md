@@ -121,6 +121,12 @@ Configuration supports **root defaults** plus **application-specific overrides**
 - `default_batch_time`: fallback schedule when app-level schedule is missing.
 - `batch_app_concurrency`: max concurrent applications processed in one batch run.
 - `batch_policy_concurrency`: max concurrent policy evaluations per application.
+- `cosmos_telemetry_page_size`: page size for Cosmos telemetry query iteration.
+- `otlp_stream_chunk_size`: chunk size used when streaming OTLP files for batch mode.
+- `otlp_max_payload_bytes`: max OTLP HTTP JSON body size accepted by evaluator API.
+- `otlp_max_events_per_request`: max OTLP spans/events processed in one evaluator request.
+- `memory_usage_warn_mb`: warning threshold for evaluator memory usage logs.
+- `memory_usage_hard_limit_mb`: hard-stop threshold (`0` disables hard stop).
 - `evaluation_policies`: policy definitions and parameters.
 - `default_evaluation_policies`: default policies for apps that do not define `evaluation_policies`.
   If omitted, all policy names defined in `evaluation_policies` are used.
@@ -149,6 +155,12 @@ Example:
 default_batch_time: "0 * * * *"
 batch_app_concurrency: 10
 batch_policy_concurrency: 10
+cosmos_telemetry_page_size: 100
+otlp_stream_chunk_size: 100
+otlp_max_payload_bytes: 10485760
+otlp_max_events_per_request: 50000
+memory_usage_warn_mb: 1024
+memory_usage_hard_limit_mb: 0
 default_evaluation_policies:
   - safety_toxicity
   - performance_precision_coherence
@@ -173,6 +185,8 @@ Batch optimization behavior:
 - Policy execution inside each app is parallelized with bounded concurrency (`batch_policy_concurrency` or `--policy-concurrency`).
 - Duplicate checks use bulk existence lookup with a single `IN` query per chunk instead of one query per policy.
 - Result writes are persisted in batched upserts (grouped by partition key) to reduce write amplification.
+- Cosmos telemetry reads are paginated (`cosmos_telemetry_page_size`) to avoid loading large windows at once.
+- OTLP file ingestion in batch mode is streamed in chunks (`otlp_stream_chunk_size`) instead of loading whole files.
 
 Alerting example:
 
@@ -332,11 +346,13 @@ python3 telemetry/otlp_evaluator.py
 
 Endpoint:
 - `POST /api/otlp/v1/traces` (OTLP JSON traces format)
+- `POST /api/otlp/v1/traces/file` with `{ "otlp_file_path": "..." }` for local file streaming ingestion.
 
 Behavior:
 - Parse OTLP traces into telemetry records.
 - Persist telemetry into Cosmos telemetry container.
 - Evaluate policies for each trace.
+- Enforce request safeguards: payload byte limit, max events per request, and memory warning/hard-limit checks.
 - Prevent duplicate calculation using deterministic key:
   - `app_id + policy_name + trace_id + value_object_version`
 - Recompute only when `value_object_version` changes (policy version update).

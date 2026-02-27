@@ -70,6 +70,16 @@ class CosmosDbClient:
             )
         )
 
+    def query_telemetry_paged(
+        self, query: str, parameters: List[Dict[str, Any]], max_item_count: int = 100
+    ) -> Any:
+        return self._telemetry_container.query_items(
+            query=query,
+            parameters=parameters,
+            enable_cross_partition_query=True,
+            max_item_count=max_item_count,
+        )
+
     def upsert_result(self, item: Dict[str, Any]) -> Dict[str, Any]:
         return self._with_retry("upsert_result", self._results_container.upsert_item, item)
 

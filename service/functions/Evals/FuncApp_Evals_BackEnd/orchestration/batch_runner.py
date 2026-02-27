@@ -42,62 +42,89 @@ class BatchEvaluationRunner:
             start,
             end,
         )
-        records = await self.telemetry_repo.fetch_telemetry(app_cfg.app_id, start, end)
-        logger.debug("Fetched %d telemetry records for app_id=%s", len(records), app_cfg.app_id)
-
-        dedupe_trace_id = self._derive_trace_identity(records, start, end)
         
-        # Pre-calculate all expected result IDs to bulk check for duplicates
-        expected_ids = []
-        for policy_name in app_cfg.policy_names:
-            policy_cfg = next((p for p in app_cfg.policies if p.name == policy_name), None)
-            if policy_cfg:
-                policy_version = str(policy_cfg.parameters.get("version", "1.0"))
-                rid = self._stable_batch_result_id(
-                    app_cfg.app_id, policy_name, dedupe_trace_id, policy_version
-                )
-                expected_ids.append(rid)
-
-        existing_ids = set()
-        if expected_ids:
-            existing_list = await self.evaluation_repo.results_exist(expected_ids)
-            existing_ids = set(existing_list)
-            if existing_ids:
-                logger.info(
-                    "Skipping %d/%d previously evaluated policies for app_id=%s",
-                    len(existing_ids),
-                    len(expected_ids),
-                    app_cfg.app_id,
-                )
-
+        all_results = []
+        total_records = 0
         policy_sem = asyncio.Semaphore(self._policy_concurrency)
+        handled_chunks = False
 
-        async def _run_policy(policy_name: str) -> EvaluationResult | None:
-            async with policy_sem:
-                return await self._evaluate_policy(
-                    policy_name,
-                    app_cfg,
-                    records,
-                    start,
-                    end,
-                    dedupe_trace_id,
-                    existing_ids,
-                )
+        async for chunk in self.telemetry_repo.fetch_telemetry(app_cfg.app_id, start, end):
+            if not chunk:
+                continue
+            
+            handled_chunks = True
+            total_records += len(chunk)
+            dedupe_trace_id = self._derive_trace_identity(chunk, start, end)
+            
+            # Pre-calculate all expected result IDs to bulk check for duplicates
+            expected_ids = []
+            for policy_name in app_cfg.policy_names:
+                policy_cfg = next((p for p in app_cfg.policies if p.name == policy_name), None)
+                if policy_cfg:
+                    policy_version = str(policy_cfg.parameters.get("version", "1.0"))
+                    rid = self._stable_batch_result_id(
+                        app_cfg.app_id, policy_name, dedupe_trace_id, policy_version
+                    )
+                    expected_ids.append(rid)
 
-        tasks = [_run_policy(policy_name) for policy_name in app_cfg.policy_names]
-        results = await asyncio.gather(*tasks)
-        results = [result for result in results if result is not None]
+            existing_ids = set()
+            if expected_ids:
+                existing_list = await self.evaluation_repo.results_exist(expected_ids)
+                existing_ids = set(existing_list)
+                if existing_ids:
+                    logger.info(
+                        "Skipping %d/%d previously evaluated policies for app_id=%s chunk",
+                        len(existing_ids),
+                        len(expected_ids),
+                        app_cfg.app_id,
+                    )
 
-        if results:
-            await self.evaluation_repo.save_results(results)
+            async def _run_policy(policy_name: str, current_chunk: List[TelemetryRecord] = chunk, current_dedupe: str = dedupe_trace_id, current_existing: set[str] = existing_ids) -> EvaluationResult | None:
+                async with policy_sem:
+                    return await self._evaluate_policy(
+                        policy_name,
+                        app_cfg,
+                        current_chunk,
+                        start,
+                        end,
+                        current_dedupe,
+                        current_existing,
+                    )
+
+            tasks = [_run_policy(policy_name) for policy_name in app_cfg.policy_names]
+            chunk_results = await asyncio.gather(*tasks)
+            all_results.extend([result for result in chunk_results if result is not None])
+
+        if not handled_chunks:
+            # If no telemetry was found, evaluate once with empty list to produce zero metrics
+            dedupe_trace_id = self._derive_trace_identity([], start, end)
+            async def _run_empty_policy(policy_name: str) -> EvaluationResult | None:
+                async with policy_sem:
+                    return await self._evaluate_policy(
+                        policy_name,
+                        app_cfg,
+                        [],
+                        start,
+                        end,
+                        dedupe_trace_id,
+                        set(),
+                    )
+            tasks = [_run_empty_policy(policy_name) for policy_name in app_cfg.policy_names]
+            empty_results = await asyncio.gather(*tasks)
+            all_results.extend([result for result in empty_results if result is not None])
+
+        logger.debug("Fetched %d telemetry records total for app_id=%s", total_records, app_cfg.app_id)
+
+        if all_results:
+            await self.evaluation_repo.save_results(all_results)
             logger.info(
                 "Saved %d evaluation results for app_id=%s (breaches=%d)",
-                len(results),
+                len(all_results),
                 app_cfg.app_id,
-                sum(len(r.breaches) for r in results),
+                sum(len(r.breaches) for r in all_results),
             )
 
-        return list(results)
+        return all_results
 
     async def _evaluate_policy(
         self,

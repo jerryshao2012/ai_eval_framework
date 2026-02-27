@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Protocol
+from typing import AsyncIterator, Dict, List, Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ from data.models import EvaluationResult, TelemetryRecord
 
 
 class TelemetryRepository(Protocol):
-    async def fetch_telemetry(self, app_id: str, start_ts: str, end_ts: str) -> List[TelemetryRecord]:
+    async def fetch_telemetry(self, app_id: str, start_ts: str, end_ts: str) -> AsyncIterator[List[TelemetryRecord]]:
         ...
 
 
@@ -35,26 +35,32 @@ class EvaluationRepository(Protocol):
 
 
 class CosmosTelemetryRepository:
-    def __init__(self, client: CosmosDbClient) -> None:
+    def __init__(self, client: CosmosDbClient, page_size: int = 100) -> None:
         self._client = client
+        self._page_size = max(1, int(page_size))
 
-    async def fetch_telemetry(self, app_id: str, start_ts: str, end_ts: str) -> List[TelemetryRecord]:
-        def _fetch() -> List[TelemetryRecord]:
-            query = (
-                "SELECT * FROM c WHERE c.type = 'telemetry' "
-                "AND c.app_id = @app_id AND c.timestamp >= @start_ts AND c.timestamp < @end_ts"
-            )
-            rows = self._client.query_telemetry(
-                query,
-                [
-                    {"name": "@app_id", "value": app_id},
-                    {"name": "@start_ts", "value": start_ts},
-                    {"name": "@end_ts", "value": end_ts},
-                ],
-            )
-            return [TelemetryRecord(**_pick_telemetry_fields(row)) for row in rows]
+    async def fetch_telemetry(self, app_id: str, start_ts: str, end_ts: str) -> AsyncIterator[List[TelemetryRecord]]:
+        query = (
+            "SELECT * FROM c WHERE c.type = 'telemetry' "
+            "AND c.app_id = @app_id AND c.timestamp >= @start_ts AND c.timestamp < @end_ts"
+        )
+        parameters = [
+            {"name": "@app_id", "value": app_id},
+            {"name": "@start_ts", "value": start_ts},
+            {"name": "@end_ts", "value": end_ts},
+        ]
+        iterator = self._client.query_telemetry_paged(
+            query,
+            parameters,
+            max_item_count=self._page_size,
+        ).by_page()
 
-        return await asyncio.to_thread(_fetch)
+        while True:
+            try:
+                page = await asyncio.to_thread(next, iterator)
+                yield [TelemetryRecord(**_pick_telemetry_fields(row)) for row in page]
+            except StopIteration:
+                break
 
 
 class CosmosEvaluationRepository:
@@ -152,12 +158,15 @@ class InMemoryTelemetryRepository:
     def __init__(self, store: InMemoryStore) -> None:
         self._store = store
 
-    async def fetch_telemetry(self, app_id: str, start_ts: str, end_ts: str) -> List[TelemetryRecord]:
-        return [
+    async def fetch_telemetry(self, app_id: str, start_ts: str, end_ts: str) -> AsyncIterator[List[TelemetryRecord]]:
+        records = [
             row
             for row in self._store.telemetry
             if row.app_id == app_id and start_ts <= row.timestamp < end_ts
         ]
+        chunk_size = 100
+        for i in range(0, len(records), chunk_size):
+            yield records[i : i + chunk_size]
 
 
 class InMemoryEvaluationRepository:

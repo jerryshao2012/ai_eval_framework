@@ -83,6 +83,12 @@ class RootConfig:
     default_batch_time: str
     batch_app_concurrency: int = 10
     batch_policy_concurrency: int = 10
+    cosmos_telemetry_page_size: int = 100
+    otlp_stream_chunk_size: int = 100
+    otlp_max_payload_bytes: int = 10_485_760  # 10 MiB
+    otlp_max_events_per_request: int = 50_000
+    memory_usage_warn_mb: int = 1024
+    memory_usage_hard_limit_mb: int = 0
     evaluation_policies: Dict[str, PolicyConfig] = field(default_factory=dict)
     default_evaluation_policies: List[str] = field(default_factory=list)
     global_thresholds: Dict[str, List[ThresholdConfig]] = field(default_factory=dict)

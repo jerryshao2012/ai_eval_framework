@@ -106,9 +106,15 @@ async def run_batch(
     cosmos = CosmosDbClient(root_config.cosmos)
     telemetry_source_type = root_config.telemetry_source.type
     if telemetry_source_type == "cosmos":
-        telemetry_repo = CosmosTelemetryRepository(cosmos)
+        telemetry_repo = CosmosTelemetryRepository(
+            cosmos,
+            page_size=root_config.cosmos_telemetry_page_size,
+        )
     elif telemetry_source_type == "otlp":
-        telemetry_repo = OtlpTelemetryRepository(root_config.telemetry_source.otlp_file_path)
+        telemetry_repo = OtlpTelemetryRepository(
+            root_config.telemetry_source.otlp_file_path,
+            chunk_size=root_config.otlp_stream_chunk_size,
+        )
     else:
         raise ValueError(f"Unsupported telemetry source type: {telemetry_source_type}")
     evaluation_repo = CosmosEvaluationRepository(cosmos)

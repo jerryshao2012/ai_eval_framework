@@ -222,6 +222,27 @@ def load_config(config_path: str) -> RootConfig:
         batch_policy_concurrency=int(
             raw.get("batch_policy_concurrency", os.getenv("BATCH_POLICY_CONCURRENCY", 10))
         ),
+        cosmos_telemetry_page_size=int(
+            raw.get("cosmos_telemetry_page_size", os.getenv("COSMOS_TELEMETRY_PAGE_SIZE", 100))
+        ),
+        otlp_stream_chunk_size=int(
+            raw.get("otlp_stream_chunk_size", os.getenv("OTLP_STREAM_CHUNK_SIZE", 100))
+        ),
+        otlp_max_payload_bytes=int(
+            raw.get("otlp_max_payload_bytes", os.getenv("OTLP_MAX_PAYLOAD_BYTES", 10_485_760))
+        ),
+        otlp_max_events_per_request=int(
+            raw.get(
+                "otlp_max_events_per_request",
+                os.getenv("OTLP_MAX_EVENTS_PER_REQUEST", 50_000),
+            )
+        ),
+        memory_usage_warn_mb=int(
+            raw.get("memory_usage_warn_mb", os.getenv("MEMORY_USAGE_WARN_MB", 1024))
+        ),
+        memory_usage_hard_limit_mb=int(
+            raw.get("memory_usage_hard_limit_mb", os.getenv("MEMORY_USAGE_HARD_LIMIT_MB", 0))
+        ),
         evaluation_policies=parsed_policies,
         default_evaluation_policies=default_policy_names,
         global_thresholds=_parse_thresholds(raw.get("global_thresholds", {})),

@@ -202,6 +202,35 @@ def test_batch_concurrency_parsed_from_json(tmp_path: Path) -> None:
     assert cfg.batch_policy_concurrency == 3
 
 
+def test_memory_and_otlp_limits_parsed_from_json(tmp_path: Path) -> None:
+    payload = {
+        "default_batch_time": "0 * * * *",
+        "cosmos_telemetry_page_size": 250,
+        "otlp_stream_chunk_size": 64,
+        "otlp_max_payload_bytes": 2048,
+        "otlp_max_events_per_request": 123,
+        "memory_usage_warn_mb": 256,
+        "memory_usage_hard_limit_mb": 512,
+        "evaluation_policies": {
+            "performance_precision_coherence": {
+                "metrics": ["performance_precision_coherence"],
+                "parameters": {},
+            }
+        },
+        "app_config": {"appx": {}},
+    }
+    file_path = tmp_path / "cfg.json"
+    file_path.write_text(json.dumps(payload))
+
+    cfg = load_config(str(file_path))
+    assert cfg.cosmos_telemetry_page_size == 250
+    assert cfg.otlp_stream_chunk_size == 64
+    assert cfg.otlp_max_payload_bytes == 2048
+    assert cfg.otlp_max_events_per_request == 123
+    assert cfg.memory_usage_warn_mb == 256
+    assert cfg.memory_usage_hard_limit_mb == 512
+
+
 def test_cosmos_resilience_settings_parsed_from_json(tmp_path: Path) -> None:
     payload = {
         "default_batch_time": "0 * * * *",

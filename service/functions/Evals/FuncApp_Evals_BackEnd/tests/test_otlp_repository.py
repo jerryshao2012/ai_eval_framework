@@ -51,11 +51,15 @@ async def test_otlp_repository_fetches_by_app_and_window(tmp_path) -> None:
     file_path.write_text(json.dumps(payload))
 
     repo = OtlpTelemetryRepository(str(file_path))
-    records = await repo.fetch_telemetry(
-        app_id="app1",
-        start_ts="2023-11-14T22:00:00+00:00",
-        end_ts="2023-11-14T23:00:00+00:00",
-    )
+    chunks = [
+        chunk
+        async for chunk in repo.fetch_telemetry(
+            app_id="app1",
+            start_ts="2023-11-14T22:00:00+00:00",
+            end_ts="2023-11-14T23:00:00+00:00",
+        )
+    ]
+    records = chunks[0] if chunks else []
     assert len(records) == 1
     assert records[0].app_id == "app1"
     assert records[0].metadata["trace_id"] == "trace-1"

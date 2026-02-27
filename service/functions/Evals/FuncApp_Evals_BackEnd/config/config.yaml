@@ -1,6 +1,12 @@
 default_batch_time: "0 * * * *"
 batch_app_concurrency: 10
 batch_policy_concurrency: 10
+cosmos_telemetry_page_size: 100
+otlp_stream_chunk_size: 100
+otlp_max_payload_bytes: 10485760
+otlp_max_events_per_request: 50000
+memory_usage_warn_mb: 1024
+memory_usage_hard_limit_mb: 0
 default_evaluation_policies:
   - safety_toxicity
   - safety_bias_fairness
