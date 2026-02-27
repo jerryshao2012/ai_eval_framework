@@ -7,7 +7,7 @@
   </defs>
   <rect width="1200" height="680" fill="url(#bg)"/>
   <rect x="24" y="24" width="1152" height="72" rx="12" fill="#ffffff" stroke="#d7e8e3"/>
-  <text x="44" y="58" font-family="Segoe UI, Arial, sans-serif" font-size="28" fill="#173246">AI Evaluation Dashboard</text>
+  <text x="44" y="58" font-family="Segoe UI, Arial, sans-serif" font-size="28" fill="#173246">AI Evaluation Continuous Monitoring Dashboard</text>
   <text x="44" y="82" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#4f6b77">Latest status, trends, and threshold breaches</text>
 
   <rect x="24" y="116" width="370" height="250" rx="12" fill="#ffffff" stroke="#d7e8e3"/>

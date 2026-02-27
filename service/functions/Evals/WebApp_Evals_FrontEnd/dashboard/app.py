@@ -34,7 +34,7 @@ def _openapi_spec() -> Dict[str, Any]:
     return {
         "openapi": "3.0.3",
         "info": {
-            "title": "AI Evaluation Dashboard API",
+            "title": "AI Evaluation API",
             "version": "1.0.0",
             "description": "APIs for evaluation metrics, alerts, thresholds, and batch job execution status.",
         },
