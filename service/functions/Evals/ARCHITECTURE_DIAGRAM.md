@@ -4,7 +4,7 @@ This diagram includes Azure services, OpenTelemetry integration paths, and imple
 
 ```mermaid
 flowchart LR
-    A["Client Apps / AI Services"] --> B["Telemetry SDK Integration\n(telemetry.emit_telemetry_event)"]
+    A["Client Apps / AI Services"] --> B["Telemetry SDK Integration\n(telemetry.AsyncTelemetryEmitter)"]
     A --> C["Telemetry API\nPOST /api/telemetry"]
     C --> EH["Azure Event Hubs\n(ai-eval-telemetry)"]
     B --> EH
@@ -27,7 +27,7 @@ flowchart LR
     CT --> DAPI
     DAPI --> DUI["Dashboard UI\n(Trends, Alerts, Batch Status, Trace Logs)"]
 
-    BR --> JS["Batch Job Status Store\nbatch_status.json"]
+    BR --> JS["Batch Job Status Store\nbatch_status.db (json fallback)"]
     JS --> DAPI
 
     ORCH["Heavy Compute Orchestration\nscripts/submit_azure_batch.py"] --> AB["Azure Batch\nJob/Pool/Tasks (group shards)"]

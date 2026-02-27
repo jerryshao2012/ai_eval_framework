@@ -63,7 +63,7 @@ Batch runner (per app)
 
 Telemetry ingestion path (implemented):
 1. `POST /api/telemetry` receives telemetry payloads and publishes them to Azure Event Hubs.
-2. `telemetry.emit_telemetry_event(...)` can be called directly by application instrumentation libraries when API hop is not needed.
+2. `telemetry.AsyncTelemetryEmitter` can be used directly by application instrumentation libraries when API hop is not needed.
 3. Event processor validates and enriches events.
 4. Processor writes telemetry documents to Cosmos DB telemetry container.
 5. OTLP trace evaluator (`POST /api/otlp/v1/traces`) ingests OpenTelemetry OTLP trace payloads, stores telemetry, and performs deduplicated evaluations into Cosmos results.
@@ -94,7 +94,7 @@ Azure documentation in this folder:
 - `AZURE_RECOMMENDATIONS.md` (architecture patterns and tradeoffs)
 - `AZURE_SERVICES_SETUP.md` (service list + step-by-step configuration)
 
-## Setup (Python 3.9+)
+## Setup (Python 3.10+)
 
 1. Create/activate a virtual environment.
 2. Install dependencies:

@@ -1,5 +1,19 @@
 # Azure PoT Roadmap for AI Evaluation Framework (OpenTelemetry + Cosmos)
 
+## Current Fit Assessment (as of February 27, 2026)
+
+Roadmap structure still makes sense, but it should now be treated as a tracking/burn-down artifact rather than a future-only plan.
+
+Implementation status snapshot:
+- PoT-1: partially out-of-repo (Azure provisioning/CI details are environment-specific and not fully represented in source).
+- PoT-2: implemented in-repo (`/api/telemetry`, async emitter batching/compression/backpressure).
+- PoT-3: implemented in-repo (processor enrichment/validation with bounded processing behavior).
+- PoT-4: implemented in-repo (batch Cosmos evaluation, dedupe/value-versioning, batched writes/checks).
+- PoT-5: implemented in-repo (OTLP source mode + dedupe/versioning alignment).
+- PoT-6: implemented in-repo for sharding/task submission script; Azure pool/job ops remain deployment-specific.
+- PoT-7: implemented in-repo (dashboard APIs, dynamic thresholds, batch traceability, pagination/cache behaviors).
+- PoT-8: partially implemented in-repo (alerting channels + circuit-breaker/queueing); environment security hardening and go/no-go governance remain operational tasks.
+
 ## Purpose
 
 This document defines a **Proof of Technology (PoT)** rollout plan to implement and validate the AI Evaluation framework on Azure in short increments.
