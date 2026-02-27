@@ -117,6 +117,10 @@ export COSMOS_DATABASE="ai-eval"
 ## Configuration Management
 
 Configuration supports **root defaults** plus **application-specific overrides**.
+Runtime loading behavior:
+- Config loading uses a process-wide singleton cache to avoid repeated disk reads/parsing across components.
+- Cache entries use TTL (`CONFIG_CACHE_TTL_SECONDS`, default `60`) and file mtime checks for refresh.
+- Sections are lazy-evaluated via `RootConfig` properties and can be loaded independently with `load_config_section(...)`.
 
 ### Root configuration (global)
 - `default_batch_time`: fallback schedule when app-level schedule is missing.

@@ -2,7 +2,7 @@ import json
 import pytest
 from pathlib import Path
 
-from config.loader import load_config, resolve_app_config
+from config.loader import load_config, load_config_section, resolve_app_config
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 CONFIG_PATH = str(BASE_DIR / "config" / "config.yaml")
@@ -264,3 +264,71 @@ def test_cosmos_resilience_settings_parsed_from_json(tmp_path: Path) -> None:
     assert cfg.cosmos.operation_retry_base_delay_seconds == 0.25
     assert cfg.cosmos.operation_retry_max_delay_seconds == 12.0
     assert cfg.cosmos.operation_retry_jitter_seconds == 0.1
+
+
+def test_load_config_uses_singleton_cache(tmp_path: Path) -> None:
+    payload = {
+        "default_batch_time": "0 * * * *",
+        "evaluation_policies": {
+            "performance_precision_coherence": {
+                "metrics": ["performance_precision_coherence"],
+                "parameters": {},
+            }
+        },
+        "app_config": {"appx": {}},
+    }
+    file_path = tmp_path / "cfg.json"
+    file_path.write_text(json.dumps(payload))
+
+    cfg1 = load_config(str(file_path), ttl_seconds=3600)
+    cfg2 = load_config(str(file_path), ttl_seconds=3600)
+    assert cfg1 is cfg2
+
+
+def test_load_config_force_reload_ignores_cache(tmp_path: Path) -> None:
+    payload = {
+        "default_batch_time": "0 * * * *",
+        "evaluation_policies": {
+            "performance_precision_coherence": {
+                "metrics": ["performance_precision_coherence"],
+                "parameters": {},
+            }
+        },
+        "app_config": {"appx": {}},
+    }
+    file_path = tmp_path / "cfg.json"
+    file_path.write_text(json.dumps(payload))
+
+    cfg1 = load_config(str(file_path))
+    payload["default_batch_time"] = "0 1 * * *"
+    file_path.write_text(json.dumps(payload))
+    cfg2 = load_config(str(file_path), force_reload=True)
+
+    assert cfg1.default_batch_time == "0 * * * *"
+    assert cfg2.default_batch_time == "0 1 * * *"
+
+
+def test_load_config_section_lazy_access(tmp_path: Path) -> None:
+    payload = {
+        "default_batch_time": "0 * * * *",
+        "telemetry_source": {
+            "type": "otlp",
+            "otlp_file_path": "/tmp/otlp.json",
+        },
+        "evaluation_policies": {
+            "performance_precision_coherence": {
+                "metrics": ["performance_precision_coherence"],
+                "parameters": {},
+            }
+        },
+        "app_config": {"appx": {}},
+    }
+    file_path = tmp_path / "cfg.json"
+    file_path.write_text(json.dumps(payload))
+
+    telemetry_source = load_config_section(str(file_path), "telemetry_source")
+    policies = load_config_section(str(file_path), "evaluation_policies")
+
+    assert telemetry_source.type == "otlp"
+    assert telemetry_source.otlp_file_path == "/tmp/otlp.json"
+    assert "performance_precision_coherence" in policies
