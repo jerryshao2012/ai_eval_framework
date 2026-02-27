@@ -115,6 +115,16 @@ def _parse_telemetry_source(raw: Dict[str, Any]) -> TelemetrySourceConfig:
     )
 
 
+def _to_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def load_config(config_path: str) -> RootConfig:
     path = Path(config_path)
     if not path.exists():
@@ -138,6 +148,61 @@ def load_config(config_path: str) -> RootConfig:
             database_name=cosmos_cfg.get("database_name", os.getenv("COSMOS_DATABASE", "ai-eval")),
             telemetry_container=cosmos_cfg.get("telemetry_container", "telemetry"),
             results_container=cosmos_cfg.get("results_container", "evaluation_results"),
+            enable_bulk=_to_bool(
+                cosmos_cfg.get("enable_bulk", os.getenv("COSMOS_ENABLE_BULK")),
+                True,
+            ),
+            pool_max_connection_size=int(
+                cosmos_cfg.get(
+                    "pool_max_connection_size",
+                    os.getenv("COSMOS_POOL_MAX_CONNECTION_SIZE", 100),
+                )
+            ),
+            client_retry_total=int(
+                cosmos_cfg.get("client_retry_total", os.getenv("COSMOS_CLIENT_RETRY_TOTAL", 10))
+            ),
+            client_retry_backoff_max=int(
+                cosmos_cfg.get(
+                    "client_retry_backoff_max",
+                    os.getenv("COSMOS_CLIENT_RETRY_BACKOFF_MAX", 30),
+                )
+            ),
+            client_retry_backoff_factor=float(
+                cosmos_cfg.get(
+                    "client_retry_backoff_factor",
+                    os.getenv("COSMOS_CLIENT_RETRY_BACKOFF_FACTOR", 1),
+                )
+            ),
+            client_connection_timeout=int(
+                cosmos_cfg.get(
+                    "client_connection_timeout",
+                    os.getenv("COSMOS_CLIENT_CONNECTION_TIMEOUT", 60),
+                )
+            ),
+            operation_retry_attempts=int(
+                cosmos_cfg.get(
+                    "operation_retry_attempts",
+                    os.getenv("COSMOS_OPERATION_RETRY_ATTEMPTS", 5),
+                )
+            ),
+            operation_retry_base_delay_seconds=float(
+                cosmos_cfg.get(
+                    "operation_retry_base_delay_seconds",
+                    os.getenv("COSMOS_OPERATION_RETRY_BASE_DELAY_SECONDS", 0.5),
+                )
+            ),
+            operation_retry_max_delay_seconds=float(
+                cosmos_cfg.get(
+                    "operation_retry_max_delay_seconds",
+                    os.getenv("COSMOS_OPERATION_RETRY_MAX_DELAY_SECONDS", 8),
+                )
+            ),
+            operation_retry_jitter_seconds=float(
+                cosmos_cfg.get(
+                    "operation_retry_jitter_seconds",
+                    os.getenv("COSMOS_OPERATION_RETRY_JITTER_SECONDS", 0.25),
+                )
+            ),
         )
 
     parsed_policies = _parse_policies(raw.get("evaluation_policies", {}))

@@ -34,6 +34,16 @@ class CosmosConfig:
     database_name: str
     telemetry_container: str = "telemetry"
     results_container: str = "evaluation_results"
+    enable_bulk: bool = True
+    pool_max_connection_size: int = 100
+    client_retry_total: int = 10
+    client_retry_backoff_max: int = 30
+    client_retry_backoff_factor: float = 1.0
+    client_connection_timeout: int = 60
+    operation_retry_attempts: int = 5
+    operation_retry_base_delay_seconds: float = 0.5
+    operation_retry_max_delay_seconds: float = 8.0
+    operation_retry_jitter_seconds: float = 0.25
 
 
 @dataclass

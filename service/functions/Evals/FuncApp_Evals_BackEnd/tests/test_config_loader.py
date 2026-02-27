@@ -179,3 +179,38 @@ def test_telemetry_source_otlp_parsed_from_json(tmp_path: Path) -> None:
     cfg = load_config(str(file_path))
     assert cfg.telemetry_source.type == "otlp"
     assert cfg.telemetry_source.otlp_file_path == "/tmp/otlp.json"
+
+
+def test_cosmos_resilience_settings_parsed_from_json(tmp_path: Path) -> None:
+    payload = {
+        "default_batch_time": "0 * * * *",
+        "cosmos": {
+            "endpoint": "https://example.documents.azure.com:443/",
+            "key": "secret",
+            "database_name": "ai-eval",
+            "enable_bulk": False,
+            "pool_max_connection_size": 200,
+            "operation_retry_attempts": 7,
+            "operation_retry_base_delay_seconds": 0.25,
+            "operation_retry_max_delay_seconds": 12.0,
+            "operation_retry_jitter_seconds": 0.1,
+        },
+        "evaluation_policies": {
+            "performance_precision_coherence": {
+                "metrics": ["performance_precision_coherence"],
+                "parameters": {},
+            }
+        },
+        "app_config": {"appx": {}},
+    }
+    file_path = tmp_path / "cfg.json"
+    file_path.write_text(json.dumps(payload))
+
+    cfg = load_config(str(file_path))
+    assert cfg.cosmos is not None
+    assert cfg.cosmos.enable_bulk is False
+    assert cfg.cosmos.pool_max_connection_size == 200
+    assert cfg.cosmos.operation_retry_attempts == 7
+    assert cfg.cosmos.operation_retry_base_delay_seconds == 0.25
+    assert cfg.cosmos.operation_retry_max_delay_seconds == 12.0
+    assert cfg.cosmos.operation_retry_jitter_seconds == 0.1

@@ -57,7 +57,7 @@ def _sample_otlp_payload(trace_id: str = "abc123") -> Dict[str, Any]:
 
 
 def test_otlp_trace_evaluator_dedup_by_trace_and_version(monkeypatch, tmp_path) -> None:
-    cfg_path = "service/functions/Evals/FuncApp_Evals_BackEnd/config/config.yaml"
+    cfg_path = "config/config.yaml"
     fake_cosmos = FakeCosmos()
     service = OtlpTraceEvaluationService(cfg_path, cosmos_client=fake_cosmos)
 
@@ -72,7 +72,7 @@ def test_otlp_trace_evaluator_dedup_by_trace_and_version(monkeypatch, tmp_path) 
 
 
 def test_otlp_trace_recompute_when_value_version_changes() -> None:
-    cfg_path = "service/functions/Evals/FuncApp_Evals_BackEnd/config/config.yaml"
+    cfg_path = "config/config.yaml"
     fake_cosmos = FakeCosmos()
     service = OtlpTraceEvaluationService(cfg_path, cosmos_client=fake_cosmos)
 

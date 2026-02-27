@@ -46,14 +46,13 @@ class BatchEvaluationRunner:
         results = await asyncio.gather(*tasks)
         results = [result for result in results if result is not None]
 
-        for result in results:
-            await self.evaluation_repo.save_result(result)
+        if results:
+            await self.evaluation_repo.save_results(results)
             logger.info(
-                "Saved evaluation result: app_id=%s policy=%s metrics=%d breaches=%d",
-                result.app_id,
-                result.policy_name,
-                len(result.metrics),
-                len(result.breaches),
+                "Saved %d evaluation results for app_id=%s (breaches=%d)",
+                len(results),
+                app_cfg.app_id,
+                sum(len(r.breaches) for r in results),
             )
 
         return list(results)

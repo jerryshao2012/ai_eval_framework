@@ -17,6 +17,16 @@ cosmos:
   database_name: "ai-eval"
   telemetry_container: "telemetry"
   results_container: "evaluation_results"
+  enable_bulk: true
+  pool_max_connection_size: 100
+  client_retry_total: 10
+  client_retry_backoff_max: 30
+  client_retry_backoff_factor: 1.0
+  client_connection_timeout: 60
+  operation_retry_attempts: 5
+  operation_retry_base_delay_seconds: 0.5
+  operation_retry_max_delay_seconds: 8.0
+  operation_retry_jitter_seconds: 0.25
 
 telemetry_source:
   type: "cosmos" # "cosmos" | "otlp"

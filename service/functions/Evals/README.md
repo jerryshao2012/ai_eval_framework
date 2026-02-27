@@ -192,6 +192,33 @@ telemetry_source:
   otlp_file_path: "/path/to/otlp_traces.json"  # used only when type=otlp
 ```
 
+Cosmos connection management and resilience settings:
+
+```yaml
+cosmos:
+  endpoint: "${COSMOS_ENDPOINT}"
+  key: "${COSMOS_KEY}"
+  database_name: "ai-eval"
+  telemetry_container: "telemetry"
+  results_container: "evaluation_results"
+  enable_bulk: true
+  pool_max_connection_size: 100
+  client_retry_total: 10
+  client_retry_backoff_max: 30
+  client_retry_backoff_factor: 1.0
+  client_connection_timeout: 60
+  operation_retry_attempts: 5
+  operation_retry_base_delay_seconds: 0.5
+  operation_retry_max_delay_seconds: 8.0
+  operation_retry_jitter_seconds: 0.25
+```
+
+Operational behavior:
+- Cosmos clients are pooled and reused by configuration fingerprint to avoid per-operation client creation.
+- SDK retry is enabled for transient statuses (`408`, `429`, `500`, `502`, `503`, `504`).
+- Operation-level retry with exponential backoff + jitter is applied on transient failures.
+- Batch result writes use Cosmos batch operations (chunked to 100 items per partition) with repository fallback to per-item upserts if a batch fails.
+
 ## Continuous Monitoring Trigger (Batch Jobs)
 
 Monitoring is triggered by batch runs from `main.py`:

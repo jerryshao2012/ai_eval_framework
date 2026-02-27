@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Protocol
+
+logger = logging.getLogger(__name__)
 
 from data.cosmos_client import CosmosDbClient
 from data.models import EvaluationResult, TelemetryRecord
@@ -15,6 +19,9 @@ class TelemetryRepository(Protocol):
 
 class EvaluationRepository(Protocol):
     async def save_result(self, result: EvaluationResult) -> None:
+        ...
+
+    async def save_results(self, results: List[EvaluationResult]) -> None:
         ...
 
     async def latest_results(self, app_id: str, limit: int = 20) -> List[Dict]:
@@ -53,6 +60,36 @@ class CosmosEvaluationRepository:
 
     async def save_result(self, result: EvaluationResult) -> None:
         await asyncio.to_thread(self._client.upsert_result, result.to_dict())
+
+    async def save_results(self, results: List[EvaluationResult]) -> None:
+        if not results:
+            return
+
+        def _save_all() -> None:
+            # Group by partition key
+            grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+            for r in results:
+                payload = r.to_dict()
+                grouped[payload["pk"]].append(payload)
+
+            for pk, items in grouped.items():
+                # Transactional batch inserts limit is 100 per request
+                chunk_size = 100
+                for i in range(0, len(items), chunk_size):
+                    chunk = items[i : i + chunk_size]
+                    try:
+                        self._client.upsert_results_batch(chunk, partition_key=pk)
+                        logger.debug("Batch upserted %d results to partition %s", len(chunk), pk)
+                    except Exception as e:
+                        logger.warning(
+                            "Batch upsert failed for partition %s (%s). Falling back to individual requests.",
+                            pk,
+                            e,
+                        )
+                        for item in chunk:
+                            self._client.upsert_result(item)
+
+        await asyncio.to_thread(_save_all)
 
     async def latest_results(self, app_id: str, limit: int = 20) -> List[Dict]:
         def _fetch() -> List[Dict]:
@@ -106,6 +143,9 @@ class InMemoryEvaluationRepository:
     async def save_result(self, result: EvaluationResult) -> None:
         self._store.results.append(result)
 
+    async def save_results(self, results: List[EvaluationResult]) -> None:
+        self._store.results.extend(results)
+
     async def latest_results(self, app_id: str, limit: int = 20) -> List[Dict]:
         items = [r.to_dict() for r in self._store.results if r.app_id == app_id]
         return sorted(items, key=lambda r: r["timestamp"], reverse=True)[:limit]
@@ -114,7 +154,7 @@ class InMemoryEvaluationRepository:
         return any(r.id == result_id for r in self._store.results)
 
 
-def _pick_telemetry_fields(row: Dict) -> Dict:
+def _pick_telemetry_fields(row: Dict[str, Any]) -> Dict[str, Any]:
     allowed = {
         "id",
         "app_id",
