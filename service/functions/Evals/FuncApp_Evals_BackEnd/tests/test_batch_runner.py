@@ -24,6 +24,7 @@ _TELEMETRY = [
         output_text="A",
         expected_output="A",
         latency_ms=100,
+        metadata={"trace_id": "trace-1"},
     ),
     TelemetryRecord(
         id="2",
@@ -35,6 +36,7 @@ _TELEMETRY = [
         output_text="B",
         expected_output="A",
         latency_ms=200,
+        metadata={"trace_id": "trace-2"},
     ),
 ]
 
@@ -81,6 +83,7 @@ async def test_batch_runner_generates_and_saves_results() -> None:
             assert metric.metadata["policy_name"] == result.policy_name
             assert "window_start" in metric.metadata
             assert "window_end" in metric.metadata
+            assert "dedupe_trace_id" in metric.metadata
     precision_result = next(r for r in store.results if r.policy_name == "performance_precision_coherence")
     assert precision_result.metrics[0].metric_type == PERFORMANCE_PRECISION_COHERENCE
     latency_result = next(r for r in store.results if r.policy_name == "system_reliability_latency")
@@ -132,3 +135,64 @@ async def test_batch_runner_empty_records_produces_zero_metrics() -> None:
     assert len(results) == 2
     precision_result = next(r for r in results if r.policy_name == "performance_precision_coherence")
     assert precision_result.metrics[0].value == 0.0
+
+
+@pytest.mark.asyncio
+async def test_batch_runner_skips_duplicate_trace_version_for_same_value_object_version() -> None:
+    store = InMemoryStore(telemetry=list(_TELEMETRY), results=[])
+    runner = BatchEvaluationRunner(
+        InMemoryTelemetryRepository(store),
+        InMemoryEvaluationRepository(store),
+    )
+
+    first = await runner.run_for_application(
+        _APP_CFG,
+        start_ts="2026-02-24T00:00:00Z",
+        end_ts="2026-02-24T23:59:59Z",
+    )
+    second = await runner.run_for_application(
+        _APP_CFG,
+        start_ts="2026-02-24T00:00:00Z",
+        end_ts="2026-02-24T23:59:59Z",
+    )
+
+    assert len(first) == 2
+    assert len(second) == 0
+    assert len(store.results) == 2
+
+
+@pytest.mark.asyncio
+async def test_batch_runner_recomputes_when_value_object_version_changes() -> None:
+    store = InMemoryStore(telemetry=list(_TELEMETRY), results=[])
+    runner = BatchEvaluationRunner(
+        InMemoryTelemetryRepository(store),
+        InMemoryEvaluationRepository(store),
+    )
+
+    await runner.run_for_application(
+        _APP_CFG,
+        start_ts="2026-02-24T00:00:00Z",
+        end_ts="2026-02-24T23:59:59Z",
+    )
+
+    bumped_cfg = ResolvedAppConfig(
+        app_id=_APP_CFG.app_id,
+        batch_time=_APP_CFG.batch_time,
+        policy_names=list(_APP_CFG.policy_names),
+        policies=[
+            PolicyConfig(name="performance_precision_coherence", metrics=["performance_precision_coherence"], parameters={"version": "2.0"}),
+            PolicyConfig(name="system_reliability_latency", metrics=["system_reliability_latency"], parameters={}),
+        ],
+        thresholds=dict(_APP_CFG.thresholds),
+    )
+
+    second = await runner.run_for_application(
+        bumped_cfg,
+        start_ts="2026-02-24T00:00:00Z",
+        end_ts="2026-02-24T23:59:59Z",
+    )
+
+    # precision/coherence should re-run due to policy version bump.
+    # latency policy has no explicit version and remains deduped at default 1.0
+    assert len(second) == 1
+    assert second[0].policy_name == "performance_precision_coherence"

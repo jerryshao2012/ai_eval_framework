@@ -13,6 +13,9 @@ flowchart LR
     P --> CT["Azure Cosmos DB\nContainer: telemetry"]
 
     SCH["Scheduler\n(Azure Functions Timer / Cron / Durable Orchestrator)"] --> BR["Batch Runner\nmain.py + orchestration/batch_runner.py"]
+    CT --> BR
+    OTLPFILE["OTLP Trace File/Input\n(telemetry_source.type=otlp)"] --> BR
+    BRD["Batch Dedupe Gate\n(app_id + policy + trace_id + value_object_version)\n(fallback: trace_set/record_set/window hash)"] --> BR
     BR --> CT
     BR --> ER["Azure Cosmos DB\nContainer: evaluation_results\n(metrics-only value objects)"]
 

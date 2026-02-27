@@ -37,6 +37,12 @@ class CosmosConfig:
 
 
 @dataclass
+class TelemetrySourceConfig:
+    type: str = "cosmos"  # "cosmos" | "otlp"
+    otlp_file_path: str = ""
+
+
+@dataclass
 class EmailAlertConfig:
     enabled: bool = False
     smtp_host: str = ""
@@ -70,6 +76,7 @@ class RootConfig:
     global_thresholds: Dict[str, List[ThresholdConfig]] = field(default_factory=dict)
     applications: Dict[str, AppConfig] = field(default_factory=dict)
     cosmos: Optional[CosmosConfig] = None
+    telemetry_source: TelemetrySourceConfig = field(default_factory=TelemetrySourceConfig)
     alerting: AlertingConfig = field(default_factory=AlertingConfig)
 
 

@@ -17,6 +17,7 @@ def test_load_config_parses_policies_and_thresholds() -> None:
     app_cfg = resolve_app_config(cfg, "app1")
     assert app_cfg.batch_time == "0 2 * * *"
     assert "performance_precision_coherence" in app_cfg.policy_names
+    assert cfg.telemetry_source.type == "cosmos"
 
 
 def test_load_config_json(tmp_path: Path) -> None:
@@ -155,3 +156,26 @@ def test_alerting_config_parsed_from_json(tmp_path: Path) -> None:
     assert cfg.alerting.email.smtp_port == 2525
     assert cfg.alerting.email.to_addresses == ["a@example.com", "b@example.com"]
     assert cfg.alerting.teams.enabled is True
+
+
+def test_telemetry_source_otlp_parsed_from_json(tmp_path: Path) -> None:
+    payload = {
+        "default_batch_time": "0 * * * *",
+        "telemetry_source": {
+            "type": "otlp",
+            "otlp_file_path": "/tmp/otlp.json",
+        },
+        "evaluation_policies": {
+            "performance_precision_coherence": {
+                "metrics": ["performance_precision_coherence"],
+                "parameters": {},
+            }
+        },
+        "app_config": {"appx": {}},
+    }
+    file_path = tmp_path / "cfg.json"
+    file_path.write_text(json.dumps(payload))
+
+    cfg = load_config(str(file_path))
+    assert cfg.telemetry_source.type == "otlp"
+    assert cfg.telemetry_source.otlp_file_path == "/tmp/otlp.json"

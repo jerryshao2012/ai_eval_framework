@@ -18,6 +18,7 @@ from config.models import (
     PolicyConfig,
     ResolvedAppConfig,
     RootConfig,
+    TelemetrySourceConfig,
     TeamsAlertConfig,
     ThresholdConfig,
 )
@@ -104,6 +105,16 @@ def _parse_alerting(raw: Dict[str, Any]) -> AlertingConfig:
     )
 
 
+def _parse_telemetry_source(raw: Dict[str, Any]) -> TelemetrySourceConfig:
+    source_type = str(raw.get("type", "cosmos")).strip().lower()
+    if source_type not in {"cosmos", "otlp"}:
+        raise ValueError("telemetry_source.type must be either 'cosmos' or 'otlp'.")
+    return TelemetrySourceConfig(
+        type=source_type,
+        otlp_file_path=str(raw.get("otlp_file_path", "")),
+    )
+
+
 def load_config(config_path: str) -> RootConfig:
     path = Path(config_path)
     if not path.exists():
@@ -145,6 +156,7 @@ def load_config(config_path: str) -> RootConfig:
         global_thresholds=_parse_thresholds(raw.get("global_thresholds", {})),
         applications=_parse_applications(raw.get("app_config", {})),
         cosmos=cosmos,
+        telemetry_source=_parse_telemetry_source(raw.get("telemetry_source", {})),
         alerting=_parse_alerting(raw.get("alerting", {})),
     )
 

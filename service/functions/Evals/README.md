@@ -64,6 +64,7 @@ Telemetry ingestion path (implemented):
 2. `telemetry.emit_telemetry_event(...)` can be called directly by application instrumentation libraries when API hop is not needed.
 3. Event processor validates and enriches events.
 4. Processor writes telemetry documents to Cosmos DB telemetry container.
+5. OTLP trace evaluator (`POST /api/otlp/v1/traces`) ingests OpenTelemetry OTLP trace payloads, stores telemetry, and performs deduplicated evaluations into Cosmos results.
 
 ## Project Structure
 
@@ -123,6 +124,7 @@ Configuration supports **root defaults** plus **application-specific overrides**
 - `global_thresholds`: default thresholds applied to all apps.
 - `app_config`: app-specific overrides.
 - `cosmos`: endpoint/key/database/container settings.
+- `telemetry_source`: source used by batch processing (`cosmos` or `otlp`).
 - `alerting`: optional email/Teams notification settings.
 
 ### Application configuration (override)
@@ -181,6 +183,14 @@ alerting:
     webhook_url: "${ALERT_TEAMS_WEBHOOK_URL}"
 ```
 
+Telemetry source example:
+
+```yaml
+telemetry_source:
+  type: "cosmos"  # "cosmos" | "otlp"
+  otlp_file_path: "/path/to/otlp_traces.json"  # used only when type=otlp
+```
+
 ## Continuous Monitoring Trigger (Batch Jobs)
 
 Monitoring is triggered by batch runs from `main.py`:
@@ -188,6 +198,9 @@ Monitoring is triggered by batch runs from `main.py`:
 - Select one app (`--app-id`) or all apps.
 - Compute evaluation window (`--window-hours`).
 - Orchestrate asynchronous policy execution per application.
+- Read telemetry from configured source:
+  - `cosmos`: query Cosmos telemetry container.
+  - `otlp`: read OTLP trace payload from configured file and transform to telemetry records.
 - Persist raw evaluation results (metrics only) to Cosmos DB.
 - Log the next scheduled batch launch time per app (`next_batch_run_utc`).
 - Optionally shard the app list by fixed-size groups for horizontal VM scaling.
@@ -259,6 +272,45 @@ Processor behavior:
 - validates required telemetry fields
 - enriches metadata (`ingest_source`, processor timestamp, enqueued timestamp when available)
 - upserts telemetry documents into Cosmos DB telemetry container
+
+### 4) OTLP trace evaluation module (dedupe + value-object versioning)
+
+Run OTLP ingestion/evaluation endpoint:
+
+```bash
+cd service/functions/Evals/FuncApp_Evals_BackEnd
+python3 telemetry/otlp_evaluator.py
+```
+
+Endpoint:
+- `POST /api/otlp/v1/traces` (OTLP JSON traces format)
+
+Behavior:
+- Parse OTLP traces into telemetry records.
+- Persist telemetry into Cosmos telemetry container.
+- Evaluate policies for each trace.
+- Prevent duplicate calculation using deterministic key:
+  - `app_id + policy_name + trace_id + value_object_version`
+- Recompute only when `value_object_version` changes (policy version update).
+
+## Batch Telemetry Source Switch
+
+Batch processing supports two telemetry input modes (configured in `config/config.yaml`):
+
+1. `telemetry_source.type: "cosmos"`
+- Batch runner fetches telemetry from Cosmos DB container.
+
+2. `telemetry_source.type: "otlp"`
+- Batch runner reads OTLP trace data directly from `telemetry_source.otlp_file_path`.
+- OTLP traces are transformed into `TelemetryRecord` objects for policy evaluation.
+
+Duplicate-prevention behavior (both sources):
+- Batch runner uses deterministic evaluation IDs and dedupe gate with:
+  - `app_id + policy_name + trace_id + value_object_version`
+- If the same tuple already exists in Cosmos evaluation results, recalculation is skipped.
+- If telemetry contains multiple trace IDs in one batch slice, runner computes a deterministic `trace_set:<hash>` identity.
+- If trace IDs are missing, runner falls back to deterministic `record_set:<hash>` (or window hash as last resort).
+- Updating policy `version` (value object version) triggers a new evaluation write for the same trace identity.
 
 ### Batch Sharding Across VMs (Group by Size)
 
@@ -349,6 +401,10 @@ Required fields for effective monitoring:
 - `latency_ms`
 - `user_id` (optional, preferably pseudonymized)
 - `metadata` (slice tags, channel, locale, etc.)
+- `metadata.trace_id` (recommended for exact duplicate prevention across runs)
+
+Note:
+- If telemetry stores `trace_id` as a top-level field, repository normalization promotes it into `metadata.trace_id` automatically.
 
 Synthetic partition key:
 - `pk = "<app_id>:<YYYY-MM-DD>"`

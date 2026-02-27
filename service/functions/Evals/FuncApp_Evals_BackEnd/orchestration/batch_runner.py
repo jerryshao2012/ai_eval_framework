@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
-from uuid import uuid4
 
 from config.models import ResolvedAppConfig
 from data.models import EvaluationResult, MetricValueVersioned, TelemetryRecord
@@ -44,6 +44,7 @@ class BatchEvaluationRunner:
             for policy_name in app_cfg.policy_names
         ]
         results = await asyncio.gather(*tasks)
+        results = [result for result in results if result is not None]
 
         for result in results:
             await self.evaluation_repo.save_result(result)
@@ -64,13 +65,31 @@ class BatchEvaluationRunner:
         records: List[TelemetryRecord],
         window_start: str,
         window_end: str,
-    ) -> EvaluationResult:
+    ) -> EvaluationResult | None:
         if policy_name not in self.policy_registry:
             raise KeyError(f"Policy not registered: {policy_name}")
 
         policy_cfg = next((p for p in app_cfg.policies if p.name == policy_name), None)
         if policy_cfg is None:
             raise KeyError(f"Policy config missing for: {policy_name}")
+
+        policy_version = str(policy_cfg.parameters.get("version", "1.0"))
+        dedupe_trace_id = self._derive_trace_identity(records, window_start, window_end)
+        result_id = self._stable_batch_result_id(
+            app_id=app_cfg.app_id,
+            policy_name=policy_name,
+            trace_id=dedupe_trace_id,
+            value_object_version=policy_version,
+        )
+        if await self.evaluation_repo.result_exists(result_id):
+            logger.info(
+                "Skipping duplicate evaluation: app_id=%s policy=%s trace_id=%s version=%s",
+                app_cfg.app_id,
+                policy_name,
+                dedupe_trace_id,
+                policy_version,
+            )
+            return None
 
         policy_type = self.policy_registry[policy_name]
         policy: EvaluationPolicy = policy_type(policy_cfg)
@@ -80,19 +99,58 @@ class BatchEvaluationRunner:
             metrics=metrics,
             app_id=app_cfg.app_id,
             policy_name=policy_name,
-            policy_version=str(policy_cfg.parameters.get("version", "1.0")),
+            policy_version=policy_version,
             window_start=window_start,
             window_end=window_end,
+            dedupe_trace_id=dedupe_trace_id,
         )
 
         return EvaluationResult(
-            id=f"{app_cfg.app_id}:{policy_name}:{uuid4().hex}",
+            id=result_id,
             app_id=app_cfg.app_id,
             timestamp=datetime.now(timezone.utc).isoformat(),
             policy_name=policy_name,
             metrics=metrics,
             breaches=[],
         )
+
+    def _stable_batch_result_id(
+        self,
+        app_id: str,
+        policy_name: str,
+        trace_id: str,
+        value_object_version: str,
+    ) -> str:
+        fingerprint = f"{app_id}|{policy_name}|{trace_id}|{value_object_version}"
+        digest = hashlib.sha1(fingerprint.encode("utf-8")).hexdigest()[:16]
+        return f"{app_id}:{policy_name}:{trace_id}:{value_object_version}:{digest}"
+
+    def _derive_trace_identity(
+        self,
+        records: List[TelemetryRecord],
+        window_start: str,
+        window_end: str,
+    ) -> str:
+        trace_ids = sorted(
+            {
+                str(record.metadata.get("trace_id"))
+                for record in records
+                if record.metadata.get("trace_id")
+            }
+        )
+        if len(trace_ids) == 1:
+            return trace_ids[0]
+        if len(trace_ids) > 1:
+            digest = hashlib.sha1("|".join(trace_ids).encode("utf-8")).hexdigest()[:16]
+            return f"trace_set:{digest}"
+
+        record_ids = sorted({record.id for record in records if record.id})
+        if record_ids:
+            digest = hashlib.sha1("|".join(record_ids).encode("utf-8")).hexdigest()[:16]
+            return f"record_set:{digest}"
+
+        digest = hashlib.sha1(f"{window_start}|{window_end}".encode("utf-8")).hexdigest()[:16]
+        return f"window:{digest}"
 
     def _normalize_metrics_for_traceability(
         self,
@@ -102,6 +160,7 @@ class BatchEvaluationRunner:
         policy_version: str,
         window_start: str,
         window_end: str,
+        dedupe_trace_id: str,
     ) -> List[MetricValueVersioned]:
         normalized: List[MetricValueVersioned] = []
         for metric in metrics:
@@ -118,6 +177,7 @@ class BatchEvaluationRunner:
                 "policy_version": policy_version,
                 "value_object_type": "metric_value_versioned",
                 "value_object_version": metric.version,
+                "dedupe_trace_id": dedupe_trace_id,
                 "window_start": window_start,
                 "window_end": window_end,
             }

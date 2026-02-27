@@ -20,6 +20,9 @@ class EvaluationRepository(Protocol):
     async def latest_results(self, app_id: str, limit: int = 20) -> List[Dict]:
         ...
 
+    async def result_exists(self, result_id: str) -> bool:
+        ...
+
 
 class CosmosTelemetryRepository:
     def __init__(self, client: CosmosDbClient) -> None:
@@ -67,6 +70,16 @@ class CosmosEvaluationRepository:
 
         return await asyncio.to_thread(_fetch)
 
+    async def result_exists(self, result_id: str) -> bool:
+        def _fetch() -> bool:
+            rows = self._client.query_results(
+                "SELECT TOP 1 c.id FROM c WHERE c.id = @id",
+                [{"name": "@id", "value": result_id}],
+            )
+            return bool(rows)
+
+        return await asyncio.to_thread(_fetch)
+
 
 @dataclass
 class InMemoryStore:
@@ -97,6 +110,9 @@ class InMemoryEvaluationRepository:
         items = [r.to_dict() for r in self._store.results if r.app_id == app_id]
         return sorted(items, key=lambda r: r["timestamp"], reverse=True)[:limit]
 
+    async def result_exists(self, result_id: str) -> bool:
+        return any(r.id == result_id for r in self._store.results)
+
 
 def _pick_telemetry_fields(row: Dict) -> Dict:
     allowed = {
@@ -112,4 +128,15 @@ def _pick_telemetry_fields(row: Dict) -> Dict:
         "latency_ms",
         "metadata",
     }
-    return {key: value for key, value in row.items() if key in allowed}
+    payload = {key: value for key, value in row.items() if key in allowed}
+
+    # Normalise trace identity for dedupe:
+    # - prefer metadata.trace_id when present
+    # - fall back to top-level trace_id/traceparent fields from telemetry ingestion
+    metadata = dict(payload.get("metadata") or {})
+    if not metadata.get("trace_id"):
+        trace_id = row.get("trace_id") or row.get("traceId") or row.get("traceparent")
+        if trace_id:
+            metadata["trace_id"] = str(trace_id)
+    payload["metadata"] = metadata
+    return payload

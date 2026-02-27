@@ -12,6 +12,7 @@ from uuid import uuid4
 from config.loader import list_resolved_apps, load_config, resolve_app_config
 from config.models import ResolvedAppConfig
 from data.cosmos_client import CosmosDbClient
+from data.otlp_repository import OtlpTelemetryRepository
 from data.repositories import (
     CosmosEvaluationRepository,
     CosmosTelemetryRepository,
@@ -78,7 +79,13 @@ async def run_batch(
         raise ValueError("Cosmos DB configuration is required to run batch jobs.")
 
     cosmos = CosmosDbClient(root_config.cosmos)
-    telemetry_repo = CosmosTelemetryRepository(cosmos)
+    telemetry_source_type = root_config.telemetry_source.type
+    if telemetry_source_type == "cosmos":
+        telemetry_repo = CosmosTelemetryRepository(cosmos)
+    elif telemetry_source_type == "otlp":
+        telemetry_repo = OtlpTelemetryRepository(root_config.telemetry_source.otlp_file_path)
+    else:
+        raise ValueError(f"Unsupported telemetry source type: {telemetry_source_type}")
     evaluation_repo = CosmosEvaluationRepository(cosmos)
     runner = BatchEvaluationRunner(telemetry_repo, evaluation_repo)
     scheduler = CronScheduler()

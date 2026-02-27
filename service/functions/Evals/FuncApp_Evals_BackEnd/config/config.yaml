@@ -18,6 +18,10 @@ cosmos:
   telemetry_container: "telemetry"
   results_container: "evaluation_results"
 
+telemetry_source:
+  type: "cosmos" # "cosmos" | "otlp"
+  otlp_file_path: "${OTLP_TELEMETRY_FILE_PATH}"
+
 evaluation_policies:
   safety_toxicity:
     metrics: ["safety_toxicity"]
