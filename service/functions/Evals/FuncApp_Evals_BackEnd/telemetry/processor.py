@@ -86,7 +86,11 @@ def run_eventhub_processor_loop(
     connection_string: str,
     eventhub_name: str,
     consumer_group: str = "$Default",
+    max_concurrency: int = 20,
 ) -> None:
+    import concurrent.futures
+    import gzip
+
     try:
         from azure.eventhub import EventHubConsumerClient
     except ImportError as exc:
@@ -98,18 +102,41 @@ def run_eventhub_processor_loop(
         consumer_group=consumer_group,
     )
 
-    def on_event(partition_context, event) -> None:
-        body = event.body_as_str(encoding="UTF-8")
-        enqueued_time = event.enqueued_time.isoformat() if event.enqueued_time else None
-        try:
-            payload = json.loads(body)
-            processor.process_event(payload, enqueued_time_utc=enqueued_time)
-            partition_context.update_checkpoint(event)
-        except Exception:
-            logger.exception("Failed to process telemetry event from partition=%s", partition_context.partition_id)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrency) as executor:
+        def on_event(partition_context, event) -> None:
+            enqueued_time = event.enqueued_time.isoformat() if event.enqueued_time else None
 
-    with client:
-        client.receive(
-            on_event=on_event,
-            starting_position="-1",
-        )
+            try:
+                # Reconstruct trailing raw bytes
+                raw_body = b"".join(event.body)
+                properties = event.properties or {}
+
+                # Decompress if tagged appropriately by Emitter batching
+                if properties.get(b"content-encoding") == b"gzip":
+                    raw_body = gzip.decompress(raw_body)
+
+                decoded_body = raw_body.decode("utf-8")
+
+                # Handle native emitter array batching
+                if properties.get(b"batch-type") == b"json-array":
+                    payloads = json.loads(decoded_body)
+                else:
+                    payloads = [json.loads(decoded_body)]
+
+                futures = [
+                    executor.submit(processor.process_event, payload, enqueued_time)
+                    for payload in payloads
+                ]
+                # Block until all futures complete to apply backpressure to EventHub polling.
+                for fut in concurrent.futures.as_completed(futures):
+                    fut.result()
+
+                partition_context.update_checkpoint(event)
+            except Exception:
+                logger.exception("Failed to process telemetry event from partition=%s", partition_context.partition_id)
+
+        with client:
+            client.receive(
+                on_event=on_event,
+                starting_position="-1",
+            )

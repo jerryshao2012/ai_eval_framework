@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from telemetry.api import create_app
+import asyncio
 
+from telemetry.emitter import BackpressureError
+from telemetry.api import create_app
 
 def _sample_event():
     return {
@@ -14,18 +16,26 @@ def _sample_event():
         "output_text": "world",
     }
 
+class FakeEmitter:
+    def __init__(self, target_dict):
+        self.target_dict = target_dict
+    async def enqueue_events(self, events):
+        self.target_dict["count"] += len(events)
+
+def fake_run_coroutine_threadsafe(coro, loop):
+    asyncio.run(coro)
+    class FakeFuture:
+        def result(self): return None
+    return FakeFuture()
 
 def test_telemetry_api_accepts_single_event(monkeypatch) -> None:
     app = create_app()
     captured = {"count": 0}
-
-    def fake_emit(events, connection_string, eventhub_name, partition_key=None):
-        captured["count"] = len(list(events))
-        return captured["count"]
-
+    
     monkeypatch.setenv("EVENTHUB_CONNECTION_STRING", "Endpoint=sb://test/")
     monkeypatch.setenv("EVENTHUB_NAME", "telemetry")
-    monkeypatch.setattr("telemetry.api.emit_telemetry_events", fake_emit)
+    monkeypatch.setattr("telemetry.api._get_emitter_sync", lambda *args, **kwargs: FakeEmitter(captured))
+    monkeypatch.setattr("telemetry.api.asyncio.run_coroutine_threadsafe", fake_run_coroutine_threadsafe)
 
     client = app.test_client()
     resp = client.post("/api/telemetry", json=_sample_event())
@@ -36,19 +46,19 @@ def test_telemetry_api_accepts_single_event(monkeypatch) -> None:
 
 def test_telemetry_api_accepts_batch_events(monkeypatch) -> None:
     app = create_app()
-
-    def fake_emit(events, connection_string, eventhub_name, partition_key=None):
-        return len(list(events))
+    captured = {"count": 0}
 
     monkeypatch.setenv("EVENTHUB_CONNECTION_STRING", "Endpoint=sb://test/")
     monkeypatch.setenv("EVENTHUB_NAME", "telemetry")
-    monkeypatch.setattr("telemetry.api.emit_telemetry_events", fake_emit)
+    monkeypatch.setattr("telemetry.api._get_emitter_sync", lambda *args, **kwargs: FakeEmitter(captured))
+    monkeypatch.setattr("telemetry.api.asyncio.run_coroutine_threadsafe", fake_run_coroutine_threadsafe)
 
     client = app.test_client()
     resp = client.post("/api/telemetry", json={"events": [_sample_event(), _sample_event()]})
     assert resp.status_code == 202
     assert resp.get_json()["accepted"] == 2
     assert resp.get_json()["emitted"] == 2
+    assert captured["count"] == 2
 
 
 def test_telemetry_api_rejects_invalid_event(monkeypatch) -> None:
@@ -73,3 +83,21 @@ def test_telemetry_api_rejects_missing_trace_id(monkeypatch) -> None:
     resp = client.post("/api/telemetry", json=bad)
     assert resp.status_code == 400
     assert "trace_id" in resp.get_json()["error"]
+
+
+def test_telemetry_api_returns_429_on_backpressure(monkeypatch) -> None:
+    app = create_app()
+    monkeypatch.setenv("EVENTHUB_CONNECTION_STRING", "Endpoint=sb://test/")
+    monkeypatch.setenv("EVENTHUB_NAME", "telemetry")
+
+    class SaturatedEmitter:
+        async def enqueue_events(self, events):
+            raise BackpressureError("Telemetry queue is full")
+
+    monkeypatch.setattr("telemetry.api._get_emitter_sync", lambda *args, **kwargs: SaturatedEmitter())
+    monkeypatch.setattr("telemetry.api.asyncio.run_coroutine_threadsafe", fake_run_coroutine_threadsafe)
+
+    client = app.test_client()
+    resp = client.post("/api/telemetry", json=_sample_event())
+    assert resp.status_code == 429
+    assert "queue is full" in resp.get_json()["error"].lower()

@@ -54,6 +54,10 @@ def test_processor_writes_telemetry_document_with_partition_key() -> None:
     assert doc["metadata"]["ingest_source"] == "event_hub_processor"
 
 
+from unittest.mock import MagicMock, patch
+import json
+import gzip
+
 def test_validate_telemetry_event_requires_trace_id() -> None:
     event = _sample_event()
     event.pop("trace_id", None)
@@ -63,3 +67,57 @@ def test_validate_telemetry_event_requires_trace_id() -> None:
         assert "trace_id" in str(exc)
     else:
         raise AssertionError("Expected trace_id validation error")
+
+
+class MockEventData:
+    def __init__(self, raw_bytes: bytes, properties: Dict[bytes, bytes]):
+        self.body = [raw_bytes]
+        self.properties = properties
+        self.enqueued_time = None
+
+    def body_as_str(self, encoding="UTF-8"):
+        raise NotImplementedError("Replaced by chunk iteration")
+
+
+import sys
+import json
+import gzip
+from unittest.mock import MagicMock
+
+def test_processor_decompresses_gzip_array_payload() -> None:
+    sink = InMemoryTelemetrySink()
+    processor = TelemetryEventProcessor(sink)
+
+    mock_azure = MagicMock()
+    mock_client_class = mock_azure.EventHubConsumerClient
+    sys.modules["azure.eventhub"] = mock_azure
+
+    try:
+        mock_client_instance = mock_client_class.from_connection_string.return_value
+        mock_partition_context = MagicMock()
+
+        payloads = [_sample_event(), _sample_event()]
+        payloads[0]["trace_id"] = "trace-a"
+        payloads[1]["trace_id"] = "trace-b"
+
+        raw_array = json.dumps(payloads).encode("utf-8")
+        compressed = gzip.compress(raw_array)
+        mock_event = MockEventData(
+            raw_bytes=compressed,
+            properties={b"content-encoding": b"gzip", b"batch-type": b"json-array"}
+        )
+
+        def fake_receive(on_event, starting_position):
+            on_event(mock_partition_context, mock_event)
+
+        mock_client_instance.receive.side_effect = fake_receive
+
+        from telemetry.processor import run_eventhub_processor_loop
+        run_eventhub_processor_loop(processor, "Endpoint=sb://fake", "fake-hub")
+
+        assert len(sink.items) == 2
+        assert sink.items[0]["metadata"]["trace_id"] == "trace-a"
+        assert len(sink.items) == 2
+        assert mock_partition_context.update_checkpoint.call_count == 1
+    finally:
+        sys.modules.pop("azure.eventhub", None)

@@ -311,32 +311,48 @@ Accepted request shapes:
 
 Validation:
 - each telemetry event must include trace identity: `trace_id` or `metadata.trace_id`.
+- API ingestion uses an async in-memory queue with bounded capacity for emitter backpressure.
+- Events are emitted in compressed (`gzip`) JSON-array batches to reduce Event Hubs network payload.
+
+Emitter runtime tuning (environment variables):
+- `TELEMETRY_EMITTER_BATCH_SIZE` (default `100`)
+- `TELEMETRY_EMITTER_FLUSH_INTERVAL_SECONDS` (default `2.0`)
+- `TELEMETRY_EMITTER_QUEUE_MAX_SIZE` (default `10000`)
+- `TELEMETRY_EMITTER_ENQUEUE_TIMEOUT_SECONDS` (default `1.0`)
+- When queue capacity is exceeded, API returns HTTP `429` to signal upstream backpressure.
 
 ### 2) Instrumentation helper (library mode)
 
 Use this when application code emits directly to Event Hubs:
 
 ```python
-from telemetry.emitter import emit_telemetry_event
+import asyncio
+from telemetry.emitter import AsyncTelemetryEmitter
 
-emit_telemetry_event(
-    event={
-        "app_id": "app1",
-        "timestamp": "2026-02-27T00:00:00Z",
-        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
-        "model_id": "m1",
-        "model_version": "v1",
-        "input_text": "hello",
-        "output_text": "world",
-    },
-    connection_string="<EVENTHUB_CONNECTION_STRING>",
-    eventhub_name="<EVENTHUB_NAME>",
-)
+async def emit_once() -> None:
+    emitter = AsyncTelemetryEmitter(
+        connection_string="<EVENTHUB_CONNECTION_STRING>",
+        eventhub_name="<EVENTHUB_NAME>",
+    )
+    await emitter.start()
+    await emitter.enqueue_event(
+        {
+            "app_id": "app1",
+            "timestamp": "2026-02-27T00:00:00Z",
+            "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+            "model_id": "m1",
+            "model_version": "v1",
+            "input_text": "hello",
+            "output_text": "world",
+        }
+    )
+    await emitter.stop()
+
+asyncio.run(emit_once())
 ```
 
 Notes:
 - `trace_id` is required for all telemetry events (same contract as OTLP traces).
-- `emit_telemetry_event(..., trace_id=\"...\")` is also supported and injects trace identity into payload metadata.
 - If OpenTelemetry is configured and `trace_id` is omitted, emitter attempts to read it from the current active span context.
 
 ### 3) Stream processor
@@ -354,6 +370,8 @@ Processor behavior:
 - validates required telemetry fields
 - enriches metadata (`ingest_source`, processor timestamp, enqueued timestamp when available)
 - upserts telemetry documents into Cosmos DB telemetry container
+- supports gzip+JSON-array payload decoding for batched emissions
+- applies bounded worker concurrency per received Event Hubs message to control write pressure
 
 ### 4) OTLP trace evaluation module (dedupe + value-object versioning)
 
