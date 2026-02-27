@@ -25,6 +25,9 @@ def validate_telemetry_event(event: Dict[str, Any]) -> None:
     missing = [key for key in required if key not in event or event[key] in (None, "")]
     if missing:
         raise ValueError(f"Telemetry event missing required fields: {', '.join(missing)}")
+    trace_id = event.get("trace_id") or (event.get("metadata") or {}).get("trace_id")
+    if trace_id in (None, ""):
+        raise ValueError("Telemetry event missing required field: trace_id")
 
 
 def enrich_telemetry_event(
@@ -36,6 +39,10 @@ def enrich_telemetry_event(
     enriched.setdefault("id", f"{enriched.get('app_id', 'unknown')}:{uuid4().hex}")
     enriched.setdefault("metadata", {})
     metadata = dict(enriched.get("metadata") or {})
+    # Keep trace identity in metadata for downstream dedupe logic.
+    trace_id = enriched.get("trace_id") or metadata.get("trace_id")
+    if trace_id:
+        metadata["trace_id"] = str(trace_id)
     metadata["ingest_source"] = source
     metadata["processed_at_utc"] = _utc_now_iso()
     if enqueued_time_utc:

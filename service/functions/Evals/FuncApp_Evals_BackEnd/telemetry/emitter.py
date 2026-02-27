@@ -4,6 +4,12 @@ import json
 from typing import Any, Dict, Iterable, List, Optional
 
 
+def _validate_emission_event(event: Dict[str, Any]) -> None:
+    trace_id = event.get("trace_id") or (event.get("metadata") or {}).get("trace_id")
+    if trace_id in (None, ""):
+        raise ValueError("Telemetry event missing required field: trace_id")
+
+
 def emit_telemetry_event(
     event: Dict[str, Any],
     connection_string: str,
@@ -24,12 +30,16 @@ def emit_telemetry_events(
     eventhub_name: str,
     partition_key: Optional[str] = None,
 ) -> int:
+    event_list = list(events)
+    for event in event_list:
+        _validate_emission_event(event)
+
     try:
         from azure.eventhub import EventData, EventHubProducerClient
     except ImportError as exc:
         raise RuntimeError("azure-eventhub is required for telemetry emission.") from exc
 
-    payloads: List[str] = [json.dumps(event) for event in events]
+    payloads: List[str] = [json.dumps(event) for event in event_list]
     if not payloads:
         return 0
 

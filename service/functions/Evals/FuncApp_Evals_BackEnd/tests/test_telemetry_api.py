@@ -9,6 +9,7 @@ def _sample_event():
         "timestamp": "2026-02-27T00:00:00Z",
         "model_id": "m1",
         "model_version": "v1",
+        "trace_id": "trace-api-1",
         "input_text": "hello",
         "output_text": "world",
     }
@@ -59,3 +60,16 @@ def test_telemetry_api_rejects_invalid_event(monkeypatch) -> None:
     resp = client.post("/api/telemetry", json={"app_id": "app1"})
     assert resp.status_code == 400
     assert "missing required fields" in resp.get_json()["error"].lower()
+
+
+def test_telemetry_api_rejects_missing_trace_id(monkeypatch) -> None:
+    app = create_app()
+    monkeypatch.setenv("EVENTHUB_CONNECTION_STRING", "Endpoint=sb://test/")
+    monkeypatch.setenv("EVENTHUB_NAME", "telemetry")
+    client = app.test_client()
+
+    bad = _sample_event()
+    bad.pop("trace_id", None)
+    resp = client.post("/api/telemetry", json=bad)
+    assert resp.status_code == 400
+    assert "trace_id" in resp.get_json()["error"]

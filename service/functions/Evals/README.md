@@ -402,9 +402,10 @@ Required fields for effective monitoring:
 - `latency_ms`
 - `user_id` (optional, preferably pseudonymized)
 - `metadata` (slice tags, channel, locale, etc.)
-- `metadata.trace_id` (recommended for exact duplicate prevention across runs)
+- `trace_id` (or `metadata.trace_id`) required for exact duplicate prevention across runs
 
 Note:
+- API/processor validation requires trace identity (`trace_id` or `metadata.trace_id`) on every telemetry event.
 - If telemetry stores `trace_id` as a top-level field, repository normalization promotes it into `metadata.trace_id` automatically.
 
 Synthetic partition key:
