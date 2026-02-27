@@ -188,6 +188,11 @@ Batch optimization behavior:
 - Cosmos telemetry reads are paginated (`cosmos_telemetry_page_size`) to avoid loading large windows at once.
 - OTLP file ingestion in batch mode is streamed in chunks (`otlp_stream_chunk_size`) instead of loading whole files.
 
+Policy computation optimization behavior:
+- Text analysis is memoized and shared across policies for repeated input/output text values.
+- Token extraction, lowercasing, sentence counting, and unique-token ratio are computed once per text and reused.
+- Set intersection checks use `isdisjoint` where appropriate to reduce intermediate allocations.
+
 Alerting example:
 
 ```yaml
