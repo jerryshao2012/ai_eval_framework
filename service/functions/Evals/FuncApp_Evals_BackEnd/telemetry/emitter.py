@@ -4,6 +4,39 @@ import json
 from typing import Any, Dict, Iterable, List, Optional
 
 
+def _trace_id_from_current_otel_span() -> Optional[str]:
+    try:
+        from opentelemetry import trace  # type: ignore
+    except Exception:
+        return None
+
+    try:
+        span = trace.get_current_span()
+        span_context = span.get_span_context()
+        trace_id_int = int(getattr(span_context, "trace_id", 0))
+        if trace_id_int == 0:
+            return None
+        return f"{trace_id_int:032x}"
+    except Exception:
+        return None
+
+
+def _normalize_event_for_emission(event: Dict[str, Any], trace_id: Optional[str] = None) -> Dict[str, Any]:
+    payload = dict(event)
+    metadata = dict(payload.get("metadata") or {})
+    resolved_trace_id = (
+        trace_id
+        or payload.get("trace_id")
+        or metadata.get("trace_id")
+        or _trace_id_from_current_otel_span()
+    )
+    if resolved_trace_id:
+        payload["trace_id"] = str(resolved_trace_id)
+        metadata["trace_id"] = str(resolved_trace_id)
+    payload["metadata"] = metadata
+    return payload
+
+
 def _validate_emission_event(event: Dict[str, Any]) -> None:
     trace_id = event.get("trace_id") or (event.get("metadata") or {}).get("trace_id")
     if trace_id in (None, ""):
@@ -15,12 +48,14 @@ def emit_telemetry_event(
     connection_string: str,
     eventhub_name: str,
     partition_key: Optional[str] = None,
+    trace_id: Optional[str] = None,
 ) -> int:
     return emit_telemetry_events(
         events=[event],
         connection_string=connection_string,
         eventhub_name=eventhub_name,
         partition_key=partition_key,
+        trace_id=trace_id,
     )
 
 
@@ -29,8 +64,9 @@ def emit_telemetry_events(
     connection_string: str,
     eventhub_name: str,
     partition_key: Optional[str] = None,
+    trace_id: Optional[str] = None,
 ) -> int:
-    event_list = list(events)
+    event_list = [_normalize_event_for_emission(event, trace_id=trace_id) for event in events]
     for event in event_list:
         _validate_emission_event(event)
 

@@ -237,6 +237,9 @@ Accepted request shapes:
 - array of events
 - object with `events: [...]`
 
+Validation:
+- each telemetry event must include trace identity: `trace_id` or `metadata.trace_id`.
+
 ### 2) Instrumentation helper (library mode)
 
 Use this when application code emits directly to Event Hubs:
@@ -248,6 +251,7 @@ emit_telemetry_event(
     event={
         "app_id": "app1",
         "timestamp": "2026-02-27T00:00:00Z",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
         "model_id": "m1",
         "model_version": "v1",
         "input_text": "hello",
@@ -257,6 +261,11 @@ emit_telemetry_event(
     eventhub_name="<EVENTHUB_NAME>",
 )
 ```
+
+Notes:
+- `trace_id` is required for all telemetry events (same contract as OTLP traces).
+- `emit_telemetry_event(..., trace_id=\"...\")` is also supported and injects trace identity into payload metadata.
+- If OpenTelemetry is configured and `trace_id` is omitted, emitter attempts to read it from the current active span context.
 
 ### 3) Stream processor
 
