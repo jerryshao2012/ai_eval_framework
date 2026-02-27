@@ -1,5 +1,6 @@
 azure-cosmos>=4.7.0
 azure-batch>=14.0.0
+azure-eventhub>=5.12.0
 PyYAML>=6.0.1
 croniter>=2.0.5
 flask>=3.0.0

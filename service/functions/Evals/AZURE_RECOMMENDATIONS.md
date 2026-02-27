@@ -1,5 +1,8 @@
 # Azure Recommendations
 
+For concrete provisioning/configuration steps per Azure service, see:
+- `AZURE_SERVICES_SETUP.md`
+
 ## Batch Job Management Options
 
 ### 1) Azure Functions (Timer Trigger)

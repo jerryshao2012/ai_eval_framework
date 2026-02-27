@@ -59,12 +59,20 @@ Batch runner (per app)
                            Alerts and status visualization
 ```
 
+Telemetry ingestion path (implemented):
+1. `POST /api/telemetry` receives telemetry payloads and publishes them to Azure Event Hubs.
+2. `telemetry.emit_telemetry_event(...)` can be called directly by application instrumentation libraries when API hop is not needed.
+3. Event processor validates and enriches events.
+4. Processor writes telemetry documents to Cosmos DB telemetry container.
+
 ## Project Structure
 
 ```text
 service/functions/Evals/
 ├── README.md
+├── ARCHITECTURE_DIAGRAM.md
 ├── AZURE_RECOMMENDATIONS.md
+├── AZURE_SERVICES_SETUP.md
 ├── FuncApp_Evals_BackEnd/
 │   ├── config/            # Configuration loading and schemas
 │   ├── data/              # Cosmos client, repositories, document models
@@ -77,6 +85,11 @@ service/functions/Evals/
 └── WebApp_Evals_FrontEnd/
     └── dashboard/         # Flask dashboard UI + API layer
 ```
+
+Azure documentation in this folder:
+- `ARCHITECTURE_DIAGRAM.md` (full Azure + implementation architecture diagram)
+- `AZURE_RECOMMENDATIONS.md` (architecture patterns and tradeoffs)
+- `AZURE_SERVICES_SETUP.md` (service list + step-by-step configuration)
 
 ## Setup (Python 3.9+)
 
@@ -188,6 +201,64 @@ python3 main.py --config config/config.yaml --window-hours 24
 python3 main.py --config config/config.yaml --app-id app1 --window-hours 6
 python3 main.py --config config/config.yaml --log-level DEBUG
 ```
+
+## Telemetry Ingestion API and Event Hubs Processor
+
+### 1) Telemetry API endpoint
+
+Run the API service:
+
+```bash
+cd service/functions/Evals/FuncApp_Evals_BackEnd
+export EVENTHUB_CONNECTION_STRING="Endpoint=sb://<namespace>.servicebus.windows.net/;SharedAccessKeyName=<name>;SharedAccessKey=<key>"
+export EVENTHUB_NAME="<eventhub-name>"
+python3 telemetry/api.py
+```
+
+Endpoint:
+- `POST /api/telemetry`
+
+Accepted request shapes:
+- single event JSON object
+- array of events
+- object with `events: [...]`
+
+### 2) Instrumentation helper (library mode)
+
+Use this when application code emits directly to Event Hubs:
+
+```python
+from telemetry.emitter import emit_telemetry_event
+
+emit_telemetry_event(
+    event={
+        "app_id": "app1",
+        "timestamp": "2026-02-27T00:00:00Z",
+        "model_id": "m1",
+        "model_version": "v1",
+        "input_text": "hello",
+        "output_text": "world",
+    },
+    connection_string="<EVENTHUB_CONNECTION_STRING>",
+    eventhub_name="<EVENTHUB_NAME>",
+)
+```
+
+### 3) Stream processor
+
+Run the Event Processor Client loop:
+
+```bash
+cd service/functions/Evals/FuncApp_Evals_BackEnd
+export EVENTHUB_CONNECTION_STRING="Endpoint=sb://<namespace>.servicebus.windows.net/;SharedAccessKeyName=<name>;SharedAccessKey=<key>"
+export EVENTHUB_NAME="<eventhub-name>"
+python3 scripts/run_eventhub_processor.py --config config/config.yaml
+```
+
+Processor behavior:
+- validates required telemetry fields
+- enriches metadata (`ingest_source`, processor timestamp, enqueued timestamp when available)
+- upserts telemetry documents into Cosmos DB telemetry container
 
 ### Batch Sharding Across VMs (Group by Size)
 
