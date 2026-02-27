@@ -74,27 +74,38 @@ class CosmosDbClient:
                 partition_key=partition_key,
             )
 
-    def query_telemetry(self, query: str, parameters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def query_telemetry(
+        self,
+        query: str,
+        parameters: List[Dict[str, Any]],
+        partition_key: str | None = None,
+    ) -> List[Dict[str, Any]]:
         return self._with_retry(
             "query_telemetry",
             lambda: list(
                 self._telemetry_container.query_items(
                     query=query,
                     parameters=parameters,
-                    enable_cross_partition_query=True,
+                    partition_key=partition_key,
+                    enable_cross_partition_query=(partition_key is None),
                 )
             )
         )
 
     def query_telemetry_paged(
-        self, query: str, parameters: List[Dict[str, Any]], max_item_count: int = 100
+        self, query: str, parameters: List[Dict[str, Any]], max_item_count: int = 100, partition_key: str | None = None
     ) -> Any:
-        return self._telemetry_container.query_items(
-            query=query,
-            parameters=parameters,
-            enable_cross_partition_query=True,
-            max_item_count=max_item_count,
-        )
+        kwargs: Dict[str, Any] = {
+            "query": query,
+            "parameters": parameters,
+            "max_item_count": max_item_count,
+        }
+        if partition_key is not None:
+            kwargs["partition_key"] = partition_key
+        else:
+            kwargs["enable_cross_partition_query"] = True
+            
+        return self._telemetry_container.query_items(**kwargs)
 
     def upsert_result(self, item: Dict[str, Any]) -> Dict[str, Any]:
         return self._with_retry("upsert_result", self._results_container.upsert_item, item)

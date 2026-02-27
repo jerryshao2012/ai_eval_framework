@@ -4,12 +4,21 @@ import asyncio
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import AsyncIterator, Dict, List, Protocol
 
 logger = logging.getLogger(__name__)
 
 from data.cosmos_client import CosmosDbClient
 from data.models import EvaluationResult, TelemetryRecord
+
+
+def _iterator_next_page(iterator: object) -> tuple[bool, object]:
+    """Return (has_value, page) without propagating StopIteration across threads."""
+    try:
+        return True, next(iterator)  # type: ignore[arg-type]
+    except StopIteration:
+        return False, None
 
 
 class TelemetryRepository(Protocol):
@@ -40,6 +49,16 @@ class CosmosTelemetryRepository:
         self._page_size = max(1, int(page_size))
 
     async def fetch_telemetry(self, app_id: str, start_ts: str, end_ts: str) -> AsyncIterator[List[TelemetryRecord]]:
+        dt_start = datetime.fromisoformat(start_ts.replace("Z", "+00:00"))
+        dt_end = datetime.fromisoformat(end_ts.replace("Z", "+00:00"))
+        
+        # Calculate all YYYY-MM-DD strings that overlap with the time range
+        date_slices = []
+        current = dt_start
+        while current.date() <= dt_end.date():
+            date_slices.append(current.strftime("%Y-%m-%d"))
+            current += timedelta(days=1)
+            
         query = (
             "SELECT * FROM c WHERE c.type = 'telemetry' "
             "AND c.app_id = @app_id AND c.timestamp >= @start_ts AND c.timestamp < @end_ts"
@@ -49,18 +68,22 @@ class CosmosTelemetryRepository:
             {"name": "@start_ts", "value": start_ts},
             {"name": "@end_ts", "value": end_ts},
         ]
-        iterator = self._client.query_telemetry_paged(
-            query,
-            parameters,
-            max_item_count=self._page_size,
-        ).by_page()
+        
+        for date_slice in date_slices:
+            partition_key = f"{app_id}:{date_slice}"
+            iterator = self._client.query_telemetry_paged(
+                query,
+                parameters,
+                max_item_count=self._page_size,
+                partition_key=partition_key,
+            ).by_page()
 
-        while True:
-            try:
-                page = await asyncio.to_thread(next, iterator)
-                yield [TelemetryRecord(**_pick_telemetry_fields(row)) for row in page]
-            except StopIteration:
-                break
+            while True:
+                has_page, page = await asyncio.to_thread(_iterator_next_page, iterator)
+                if not has_page:
+                    break
+                if page:
+                    yield [TelemetryRecord(**_pick_telemetry_fields(row)) for row in page]
 
 
 class CosmosEvaluationRepository:

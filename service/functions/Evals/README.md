@@ -191,6 +191,7 @@ Batch optimization behavior:
 - Duplicate checks use bulk existence lookup with a single `IN` query per chunk instead of one query per policy.
 - Result writes are persisted in batched upserts (grouped by partition key) to reduce write amplification.
 - Cosmos telemetry reads are paginated (`cosmos_telemetry_page_size`) to avoid loading large windows at once.
+- Cosmos telemetry reads are partition-targeted by day (`pk = app_id:YYYY-MM-DD`) to reduce cross-partition fan-out.
 - OTLP file ingestion in batch mode is streamed in chunks (`otlp_stream_chunk_size`) instead of loading whole files.
 
 Policy computation optimization behavior:
