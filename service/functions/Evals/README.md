@@ -388,8 +388,9 @@ Endpoint:
 
 Behavior:
 - Parse OTLP traces into telemetry records.
-- Persist telemetry into Cosmos telemetry container.
-- Evaluate policies for each trace.
+- Persist telemetry into Cosmos telemetry container via partitioned batch upserts.
+- Group records by `(app_id, trace_id)` and evaluate each policy once per group (not per span/record).
+- Use one batched `IN` query pass for duplicate-result checks and batch upserts for evaluation writes.
 - Enforce request safeguards: payload byte limit, max events per request, and memory warning/hard-limit checks.
 - Prevent duplicate calculation using deterministic key:
   - `app_id + policy_name + trace_id + value_object_version`

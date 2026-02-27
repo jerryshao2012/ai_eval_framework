@@ -58,6 +58,22 @@ class CosmosDbClient:
     def upsert_telemetry(self, item: Dict[str, Any]) -> Dict[str, Any]:
         return self._with_retry("upsert_telemetry", self._telemetry_container.upsert_item, item)
 
+    def upsert_telemetry_batch(self, items: List[Dict[str, Any]], partition_key: str) -> None:
+        """Upsert a batch of up to 100 items within the same logical partition."""
+        if not items:
+            return
+
+        chunk_size = 100
+        for i in range(0, len(items), chunk_size):
+            chunk = items[i : i + chunk_size]
+            batch_operations: List[Tuple[str, Tuple[Any, ...]]] = [("upsert", (item,)) for item in chunk]
+            self._with_retry(
+                "upsert_telemetry_batch",
+                self._telemetry_container.execute_item_batch,
+                batch_operations,
+                partition_key=partition_key,
+            )
+
     def query_telemetry(self, query: str, parameters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return self._with_retry(
             "query_telemetry",

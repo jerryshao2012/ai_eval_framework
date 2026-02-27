@@ -77,33 +77,53 @@ class OtlpTraceEvaluationService:
         return self._process_records(self._extract_telemetry_records_from_file(path))
 
     def _process_records(self, records: Iterator[TelemetryRecord]) -> Dict[str, int]:
+        from data.models import partition_key_for
+
         created = 0
         skipped = 0
-        seen: set[Tuple[str, str]] = set()
-        count = 0
+        all_records: List[TelemetryRecord] = []
 
         for record in records:
-            count += 1
-            if count > self._max_events_per_request:
+            all_records.append(record)
+            if len(all_records) > self._max_events_per_request:
                 raise ValueError(
                     f"OTLP request exceeds max event limit ({self._max_events_per_request})."
                 )
-            if count % 500 == 0:
-                self._enforce_memory_limits(count)
-            self.cosmos.upsert_telemetry(record.to_dict())
-            trace_id = str(record.metadata.get("trace_id", ""))
-            dedupe_key = (record.app_id, trace_id)
-            if trace_id and dedupe_key in seen:
-                skipped += 1
-                continue
-            seen.add(dedupe_key)
-            c, s = self._evaluate_trace_record(record)
-            created += c
-            skipped += s
 
-        self._enforce_memory_limits(count)
+        self._enforce_memory_limits(len(all_records))
+        
+        # 1. Group records by trace and separate telemetry upserts by partition key.
+        seen_dedupe_keys: set[Tuple[str, str]] = set()
+        partitioned_telemetry: Dict[str, List[Dict[str, Any]]] = {}
+        grouped_records: Dict[Tuple[str, str], List[TelemetryRecord]] = {}
+
+        for record in all_records:
+            trace_id = str(record.metadata.get("trace_id", "")).strip()
+            trace_group_id = trace_id or f"record:{record.id}"
+            dedupe_key = (record.app_id, trace_id)
+
+            # Telemetry is ingested for every record (including duplicate trace spans).
+            pk = partition_key_for(record.app_id, record.timestamp)
+            partitioned_telemetry.setdefault(pk, []).append(record.to_dict())
+
+            if trace_id and dedupe_key in seen_dedupe_keys:
+                skipped += 1
+            else:
+                seen_dedupe_keys.add(dedupe_key)
+            grouped_records.setdefault((record.app_id, trace_group_id), []).append(record)
+
+        # 2. Batch upsert telemetry
+        for pk, items in partitioned_telemetry.items():
+            self.cosmos.upsert_telemetry_batch(items, pk)
+
+        # 3. Evaluate each (app_id, trace_id) group once.
+        c, s = self._evaluate_record_groups_batch(grouped_records)
+        created += c
+        skipped += s
+
+        self._enforce_memory_limits(len(all_records))
         return {
-            "telemetry_events_ingested": count,
+            "telemetry_events_ingested": len(all_records),
             "evaluations_created": created,
             "evaluations_skipped_duplicate": skipped,
         }
@@ -191,35 +211,87 @@ class OtlpTraceEvaluationService:
         if missing:
             raise ValueError(f"OTLP event missing required telemetry fields: {', '.join(missing)}")
 
-    def _evaluate_trace_record(self, record: TelemetryRecord) -> Tuple[int, int]:
-        app_cfg = resolve_app_config(self.root_config, record.app_id)
+    def _evaluate_record_groups_batch(
+        self,
+        grouped_records: Dict[Tuple[str, str], List[TelemetryRecord]],
+    ) -> Tuple[int, int]:
+        from data.models import partition_key_for
+
         created = 0
         skipped = 0
-        trace_id = str(record.metadata.get("trace_id", ""))
 
-        for policy_name in app_cfg.policy_names:
-            if policy_name not in self.policy_registry:
-                logger.warning("Skipping unregistered policy=%s for app_id=%s", policy_name, record.app_id)
-                continue
-            policy_cfg = next((p for p in app_cfg.policies if p.name == policy_name), None)
-            if policy_cfg is None:
-                logger.warning("Skipping missing policy config policy=%s for app_id=%s", policy_name, record.app_id)
-                continue
+        # Step A: Collect all policy evaluations to be performed per trace group.
+        tasks_to_run: List[Tuple[str, str, List[TelemetryRecord], str, EvaluationPolicy, str, str]] = []
+        result_ids_to_check: set[str] = set()
 
-            value_version = str(policy_cfg.parameters.get("version", "1.0"))
-            result_id = _stable_result_id(record.app_id, policy_name, trace_id or "no-trace", value_version)
-            if self._result_exists(result_id):
+        for (app_id, trace_group_id), trace_records in grouped_records.items():
+            app_cfg = resolve_app_config(self.root_config, app_id)
+
+            for policy_name in app_cfg.policy_names:
+                if policy_name not in self.policy_registry:
+                    logger.warning("Skipping unregistered policy=%s for app_id=%s", policy_name, app_id)
+                    continue
+                policy_cfg = next((p for p in app_cfg.policies if p.name == policy_name), None)
+                if policy_cfg is None:
+                    logger.warning("Skipping missing policy config policy=%s for app_id=%s", policy_name, app_id)
+                    continue
+
+                value_version = str(policy_cfg.parameters.get("version", "1.0"))
+                result_id = _stable_result_id(app_id, policy_name, trace_group_id, value_version)
+
+                tasks_to_run.append((
+                    app_id,
+                    trace_group_id,
+                    trace_records,
+                    policy_name,
+                    self.policy_registry[policy_name](policy_cfg),
+                    value_version,
+                    result_id,
+                ))
+                result_ids_to_check.add(result_id)
+
+        if not tasks_to_run:
+            return 0, 0
+
+        # Step B: Batch query for existing results
+        existing_results = self._results_exist_batch(list(result_ids_to_check))
+
+        valid_tasks: List[Tuple[str, str, List[TelemetryRecord], str, EvaluationPolicy, str, str]] = []
+        for task in tasks_to_run:
+            if existing_results.get(task[6]):
                 skipped += 1
+            else:
+                valid_tasks.append(task)
+
+        if not valid_tasks:
+            return created, skipped
+
+        # Step C: Evaluate all policies concurrently
+        async def evaluate_all() -> List[Any]:
+            futures = [
+                task[4].evaluate(task[0], task[2])
+                for task in valid_tasks
+            ]
+            return await asyncio.gather(*futures, return_exceptions=True)
+
+        batch_metrics = asyncio.run(evaluate_all())
+
+        # Step D: Process results and batch upsert
+        partitioned_results: Dict[str, List[Dict[str, Any]]] = {}
+
+        for task, metrics in zip(valid_tasks, batch_metrics):
+            if isinstance(metrics, Exception):
+                logger.error(f"Policy evaluation failed for {task[3]}: {metrics}")
                 continue
 
-            policy_type = self.policy_registry[policy_name]
-            policy: EvaluationPolicy = policy_type(policy_cfg)
-            metrics = asyncio.run(policy.evaluate(record.app_id, [record]))
+            app_id, trace_group_id, trace_records, policy_name, _policy, value_version, result_id = task
+            first_record = trace_records[0]
+
             for metric in metrics:
                 metric.metadata = {
                     **metric.metadata,
-                    "trace_id": trace_id,
-                    "span_id": record.metadata.get("span_id"),
+                    "trace_id": trace_group_id,
+                    "span_id": first_record.metadata.get("span_id"),
                     "policy_name": policy_name,
                     "policy_version": value_version,
                     "value_object_type": "metric_value_versioned",
@@ -230,22 +302,41 @@ class OtlpTraceEvaluationService:
 
             result = EvaluationResult(
                 id=result_id,
-                app_id=record.app_id,
+                app_id=app_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 policy_name=policy_name,
                 metrics=metrics,
                 breaches=[],
             )
-            self.cosmos.upsert_result(result.to_dict())
+
+            pk = partition_key_for(app_id, result.timestamp)
+            partitioned_results.setdefault(pk, []).append(result.to_dict())
             created += 1
+
+        for pk, items in partitioned_results.items():
+            self.cosmos.upsert_results_batch(items, pk)
+
         return created, skipped
 
-    def _result_exists(self, result_id: str) -> bool:
-        rows = self.cosmos.query_results(
-            "SELECT TOP 1 c.id FROM c WHERE c.id = @id",
-            [{"name": "@id", "value": result_id}],
-        )
-        return bool(rows)
+    def _results_exist_batch(self, result_ids: List[str]) -> Dict[str, bool]:
+        if not result_ids:
+            return {}
+            
+        exists_map = {rid: False for rid in result_ids}
+        chunk_size = 1000 # Max IN clause size
+        
+        for i in range(0, len(result_ids), chunk_size):
+            chunk = result_ids[i:i+chunk_size]
+            parameters = [{"name": f"@id_{j}", "value": rid} for j, rid in enumerate(chunk)]
+            id_names = ", ".join(p["name"] for p in parameters)
+            query = f"SELECT c.id FROM c WHERE c.id IN ({id_names})"
+            
+            rows = self.cosmos.query_results(query, parameters)
+            for row in rows:
+                if "id" in row:
+                    exists_map[row["id"]] = True
+                    
+        return exists_map
 
     def _current_memory_mb(self) -> float:
         usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss

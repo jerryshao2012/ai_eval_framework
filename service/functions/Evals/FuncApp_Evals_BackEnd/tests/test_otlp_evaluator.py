@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Dict, List
 
 import pytest
 
 from telemetry.otlp_evaluator import OtlpTraceEvaluationService, _stable_result_id
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+CONFIG_PATH = str(BASE_DIR / "config" / "config.yaml")
 
 
 class FakeCosmos:
@@ -17,18 +21,45 @@ class FakeCosmos:
         self.telemetry.append(item)
         return item
 
+    def upsert_telemetry_batch(self, items: List[Dict[str, Any]], partition_key: str) -> None:
+        self.telemetry.extend(items)
+
     def upsert_result(self, item: Dict[str, Any]) -> Dict[str, Any]:
         self.results[item["id"]] = item
         return item
 
+    def upsert_results_batch(self, items: List[Dict[str, Any]], partition_key: str) -> None:
+        for item in items:
+            self.results[item["id"]] = item
+
     def query_results(self, query: str, parameters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        target_id = next((p["value"] for p in parameters if p["name"] == "@id"), None)
-        if target_id in self.results:
-            return [{"id": target_id}]
-        return []
+        # Mock simple single-id or IN-clause lookups
+        matches = []
+        for p in parameters:
+            target_id = p.get("value")
+            if target_id in self.results:
+                matches.append({"id": target_id})
+        return matches
 
 
-def _sample_otlp_payload(trace_id: str = "abc123") -> Dict[str, Any]:
+def _sample_otlp_payload(trace_id: str = "abc123", span_count: int = 1) -> Dict[str, Any]:
+    spans = []
+    for i in range(span_count):
+        spans.append(
+            {
+                "traceId": trace_id,
+                "spanId": f"span-{i+1}",
+                "startTimeUnixNano": "1700000000000000000",
+                "attributes": [
+                    {"key": "app_id", "value": {"stringValue": "app1"}},
+                    {"key": "model_id", "value": {"stringValue": "m1"}},
+                    {"key": "model_version", "value": {"stringValue": "v1"}},
+                    {"key": "input_text", "value": {"stringValue": "hello"}},
+                    {"key": "output_text", "value": {"stringValue": f"world-{i+1}"}},
+                    {"key": "latency_ms", "value": {"doubleValue": 100.0 + i}},
+                ],
+            }
+        )
     return {
         "resourceSpans": [
             {
@@ -37,21 +68,7 @@ def _sample_otlp_payload(trace_id: str = "abc123") -> Dict[str, Any]:
                 },
                 "scopeSpans": [
                     {
-                        "spans": [
-                            {
-                                "traceId": trace_id,
-                                "spanId": "span-1",
-                                "startTimeUnixNano": "1700000000000000000",
-                                "attributes": [
-                                    {"key": "app_id", "value": {"stringValue": "app1"}},
-                                    {"key": "model_id", "value": {"stringValue": "m1"}},
-                                    {"key": "model_version", "value": {"stringValue": "v1"}},
-                                    {"key": "input_text", "value": {"stringValue": "hello"}},
-                                    {"key": "output_text", "value": {"stringValue": "world"}},
-                                    {"key": "latency_ms", "value": {"doubleValue": 100.0}},
-                                ],
-                            }
-                        ]
+                        "spans": spans
                     }
                 ],
             }
@@ -60,9 +77,8 @@ def _sample_otlp_payload(trace_id: str = "abc123") -> Dict[str, Any]:
 
 
 def test_otlp_trace_evaluator_dedup_by_trace_and_version(monkeypatch, tmp_path) -> None:
-    cfg_path = "config/config.yaml"
     fake_cosmos = FakeCosmos()
-    service = OtlpTraceEvaluationService(cfg_path, cosmos_client=fake_cosmos)
+    service = OtlpTraceEvaluationService(CONFIG_PATH, cosmos_client=fake_cosmos)
 
     payload = _sample_otlp_payload("trace-dup")
     first = service.process_otlp_traces(payload)
@@ -75,9 +91,8 @@ def test_otlp_trace_evaluator_dedup_by_trace_and_version(monkeypatch, tmp_path) 
 
 
 def test_otlp_trace_recompute_when_value_version_changes() -> None:
-    cfg_path = "config/config.yaml"
     fake_cosmos = FakeCosmos()
-    service = OtlpTraceEvaluationService(cfg_path, cosmos_client=fake_cosmos)
+    service = OtlpTraceEvaluationService(CONFIG_PATH, cosmos_client=fake_cosmos)
 
     payload = _sample_otlp_payload("trace-version")
     first = service.process_otlp_traces(payload)
@@ -99,8 +114,7 @@ def test_result_id_stable_for_same_trace_policy_and_version() -> None:
 
 
 def test_otlp_trace_evaluator_enforces_max_events_per_request() -> None:
-    cfg_path = "config/config.yaml"
-    service = OtlpTraceEvaluationService(cfg_path, cosmos_client=FakeCosmos())
+    service = OtlpTraceEvaluationService(CONFIG_PATH, cosmos_client=FakeCosmos())
     service._max_events_per_request = 1
 
     payload = {
@@ -148,9 +162,8 @@ def test_otlp_trace_evaluator_enforces_max_events_per_request() -> None:
 
 
 def test_otlp_trace_evaluator_can_stream_from_file(tmp_path) -> None:
-    cfg_path = "config/config.yaml"
     fake_cosmos = FakeCosmos()
-    service = OtlpTraceEvaluationService(cfg_path, cosmos_client=fake_cosmos)
+    service = OtlpTraceEvaluationService(CONFIG_PATH, cosmos_client=fake_cosmos)
 
     payload = _sample_otlp_payload("trace-file")
     file_path = tmp_path / "otlp.json"
@@ -159,3 +172,24 @@ def test_otlp_trace_evaluator_can_stream_from_file(tmp_path) -> None:
     result = service.process_otlp_trace_file(str(file_path))
     assert result["telemetry_events_ingested"] == 1
     assert result["evaluations_created"] > 0
+
+
+def test_otlp_trace_group_evaluates_with_all_records_in_same_trace() -> None:
+    fake_cosmos = FakeCosmos()
+    service = OtlpTraceEvaluationService(CONFIG_PATH, cosmos_client=fake_cosmos)
+
+    payload = _sample_otlp_payload("trace-group", span_count=2)
+    result = service.process_otlp_traces(payload)
+
+    assert result["telemetry_events_ingested"] == 2
+    assert result["evaluations_created"] > 0
+
+    # At least one policy metric should see both records in the trace group.
+    sample_counts = []
+    for doc in fake_cosmos.results.values():
+        for metric in doc.get("metrics", []):
+            metadata = metric.get("metadata", {})
+            if "samples" in metadata:
+                sample_counts.append(metadata["samples"])
+    assert sample_counts
+    assert max(sample_counts) >= 2
