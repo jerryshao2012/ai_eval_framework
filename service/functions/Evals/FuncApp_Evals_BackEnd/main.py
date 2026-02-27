@@ -21,7 +21,7 @@ from evaluation.thresholds import evaluate_thresholds
 from orchestration.batch_partition import select_group, total_groups
 from orchestration.batch_runner import BatchEvaluationRunner
 from orchestration.job_tracking import SqliteJobStatusStore
-from orchestration.notifier import send_alerts
+from orchestration.notifier import enqueue_alert, alert_worker, drain_alert_queue, CircuitBreaker
 from orchestration.scheduler import CronScheduler
 
 logger = logging.getLogger(__name__)
@@ -204,17 +204,17 @@ async def run_batch(
                     f"Evaluation completed: policy_runs={len(results)} breaches={total_breaches}",
                 )
                 try:
-                    send_alerts(
+                    await enqueue_alert(
                         config=root_config.alerting,
                         app_id=app.app_id,
                         window_start=start,
                         window_end=end,
                         breaches=notification_breaches,
                     )
-                    status_store.append_item_log(run_id, app.app_id, "INFO", "Alert notification step completed.")
+                    status_store.append_item_log(run_id, app.app_id, "INFO", "Alert notification enqueued.")
                 except Exception:
-                    logger.exception("Failed to send alerts for app_id=%s", app.app_id)
-                    status_store.append_item_log(run_id, app.app_id, "ERROR", "Alert notification failed.")
+                    logger.exception("Failed to enqueue alerts for app_id=%s", app.app_id)
+                    status_store.append_item_log(run_id, app.app_id, "ERROR", "Alert enqueuing failed.")
                 logger.info("app_id=%s next_batch_run_utc=%s", app.app_id, next_run.isoformat())
                 status_store.mark_item_completed(
                     run_id=run_id,
@@ -234,8 +234,37 @@ async def run_batch(
                     traceback=trace,
                 )
 
+    stop_alert_worker = asyncio.Event()
+    worker_task = asyncio.create_task(
+        alert_worker(
+            batch_window_seconds=root_config.alerting.batch_window_seconds,
+            stop_event=stop_alert_worker,
+            email_breaker=CircuitBreaker(
+                failure_threshold=root_config.alerting.circuit_failure_threshold,
+                recovery_timeout=root_config.alerting.circuit_recovery_timeout_seconds,
+            ),
+            teams_breaker=CircuitBreaker(
+                failure_threshold=root_config.alerting.circuit_failure_threshold,
+                recovery_timeout=root_config.alerting.circuit_recovery_timeout_seconds,
+            ),
+        )
+    )
     semaphore = asyncio.Semaphore(resolved_app_concurrency)
     await asyncio.gather(*[_process_app(app, semaphore) for app in target_apps])
+    try:
+        await drain_alert_queue(root_config.alerting.shutdown_drain_timeout_seconds)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Timed out draining alert queue after %.1fs; continuing shutdown.",
+            root_config.alerting.shutdown_drain_timeout_seconds,
+        )
+
+    stop_alert_worker.set()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
+        
     status_store.finalize_run(run_id)
 
 

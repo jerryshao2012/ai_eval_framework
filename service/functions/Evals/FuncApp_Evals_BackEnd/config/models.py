@@ -147,6 +147,10 @@ class TeamsAlertConfig:
 class AlertingConfig:
     enabled: bool = False
     min_level: str = "warning"
+    batch_window_seconds: float = 5.0
+    shutdown_drain_timeout_seconds: float = 15.0
+    circuit_failure_threshold: int = 3
+    circuit_recovery_timeout_seconds: float = 60.0
     email: EmailAlertConfig = field(default_factory=EmailAlertConfig)
     teams: TeamsAlertConfig = field(default_factory=TeamsAlertConfig)
 
@@ -164,6 +168,10 @@ def _parse_alerting(raw: Dict[str, Any]) -> AlertingConfig:
     return AlertingConfig(
         enabled=bool(raw.get("enabled", False)),
         min_level=str(raw.get("min_level", "warning")).lower(),
+        batch_window_seconds=float(raw.get("batch_window_seconds", 5.0)),
+        shutdown_drain_timeout_seconds=float(raw.get("shutdown_drain_timeout_seconds", 15.0)),
+        circuit_failure_threshold=int(raw.get("circuit_failure_threshold", 3)),
+        circuit_recovery_timeout_seconds=float(raw.get("circuit_recovery_timeout_seconds", 60.0)),
         email=EmailAlertConfig(
             enabled=bool(email_raw.get("enabled", False)),
             smtp_host=str(email_raw.get("smtp_host", "")),
