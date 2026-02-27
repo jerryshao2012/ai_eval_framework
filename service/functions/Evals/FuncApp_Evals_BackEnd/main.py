@@ -20,7 +20,7 @@ from data.repositories import (
 from evaluation.thresholds import evaluate_thresholds
 from orchestration.batch_partition import select_group, total_groups
 from orchestration.batch_runner import BatchEvaluationRunner
-from orchestration.job_tracking import FileJobStatusStore
+from orchestration.job_tracking import SqliteJobStatusStore
 from orchestration.notifier import send_alerts
 from orchestration.scheduler import CronScheduler
 
@@ -166,8 +166,8 @@ async def run_batch(
         resolved_policy_concurrency,
     )
     run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
-    status_store = FileJobStatusStore(
-        Path(__file__).resolve().parent.parent / "WebApp_Evals_FrontEnd" / "dashboard" / "batch_status.json"
+    status_store = SqliteJobStatusStore(
+        Path(__file__).resolve().parent.parent / "WebApp_Evals_FrontEnd" / "dashboard" / "batch_status.db"
     )
     status_store.start_run(
         run_id=run_id,

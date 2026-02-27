@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
 
-from orchestration.job_tracking import FileJobStatusStore
+from orchestration.job_tracking import SqliteJobStatusStore
 
 
-def test_file_job_status_store_lifecycle(tmp_path: Path) -> None:
-    store = FileJobStatusStore(tmp_path / "batch_status.json")
+def test_sqlite_job_status_store_lifecycle(tmp_path: Path) -> None:
+    store = SqliteJobStatusStore(tmp_path / "batch_status.db")
     run_id = "run-1"
 
     store.start_run(
@@ -29,8 +29,8 @@ def test_file_job_status_store_lifecycle(tmp_path: Path) -> None:
     store.mark_item_failed(run_id, "app2", "boom", "traceback")
     store.finalize_run(run_id)
 
-    payload = json.loads((tmp_path / "batch_status.json").read_text())
-    run = payload["runs"][0]
+    payload = store.load_runs()
+    run = payload[0]
     assert run["status"] == "partial_failed"
     app1 = next(i for i in run["items"] if i["item_id"] == "app1")
     app2 = next(i for i in run["items"] if i["item_id"] == "app2")
