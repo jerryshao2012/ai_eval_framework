@@ -52,6 +52,14 @@ def test_batch_history_and_trace_endpoints(tmp_path) -> None:
     history_payload = history.get_json()
     assert len(history_payload) == 1
 
+    history_paged = client.get("/api/batch/history?page=1&page_size=1")
+    assert history_paged.status_code == 200
+    history_paged_payload = history_paged.get_json()
+    assert history_paged_payload["page"] == 1
+    assert history_paged_payload["page_size"] == 1
+    assert history_paged_payload["total"] == 1
+    assert len(history_paged_payload["items"]) == 1
+
     logs = client.get("/api/batch/run/run-x/item/app2/logs")
     assert logs.status_code == 200
     logs_payload = logs.get_json()

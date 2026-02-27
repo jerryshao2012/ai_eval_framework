@@ -53,7 +53,15 @@ def _openapi_spec() -> Dict[str, Any]:
             "/api/alerts": {"get": {"summary": "Get threshold breaches for latest data"}},
             "/api/thresholds": {"get": {"summary": "Get active threshold configuration"}},
             "/api/batch/current": {"get": {"summary": "Get current (or latest) batch run"}},
-            "/api/batch/history": {"get": {"summary": "Get batch run history"}},
+            "/api/batch/history": {
+                "get": {
+                    "summary": "Get batch run history",
+                    "parameters": [
+                        {"name": "page", "in": "query", "required": False, "schema": {"type": "integer"}},
+                        {"name": "page_size", "in": "query", "required": False, "schema": {"type": "integer"}},
+                    ],
+                }
+            },
             "/api/batch/run/{run_id}": {
                 "get": {
                     "summary": "Get details for a batch run",
@@ -269,7 +277,31 @@ def batch_current() -> Any:
 @app.route("/api/batch/history")
 def batch_history() -> Any:
     runs = [_run_with_stats(r) for r in _sorted_runs()]
-    return jsonify(runs)
+    page = request.args.get("page", type=int)
+    page_size = request.args.get("page_size", type=int)
+
+    # Backward-compatible response for clients that do not request pagination.
+    if page is None and page_size is None:
+        return jsonify(runs)
+
+    safe_page = max(1, page or 1)
+    safe_page_size = min(100, max(1, page_size or 10))
+    total = len(runs)
+    total_pages = max(1, (total + safe_page_size - 1) // safe_page_size)
+    if safe_page > total_pages:
+        safe_page = total_pages
+
+    start = (safe_page - 1) * safe_page_size
+    end = start + safe_page_size
+    return jsonify(
+        {
+            "items": runs[start:end],
+            "page": safe_page,
+            "page_size": safe_page_size,
+            "total": total,
+            "total_pages": total_pages,
+        }
+    )
 
 
 @app.route("/api/batch/run/<run_id>")

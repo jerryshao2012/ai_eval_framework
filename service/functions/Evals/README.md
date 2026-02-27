@@ -634,6 +634,10 @@ Dashboard capabilities:
 - Alert list for threshold breaches.
 - Optional runtime threshold overrides without changing stored batch data.
 - Batch execution monitoring: current run status, history, aggregate statistics, and failed item trace logs.
+- Concurrent dashboard data loading (`Promise.all`) to reduce initial render latency.
+- Client-side TTL caching for frequently requested API resources (latest, alerts, batch status, trends).
+- Server-backed pagination for batch history (`page`, `page_size`) to avoid rendering large history lists at once.
+- Debounced trend updates and in-place chart dataset updates to avoid full chart re-creation churn.
 
 Key endpoints:
 - `GET /api/latest`
@@ -642,6 +646,7 @@ Key endpoints:
 - `GET /api/thresholds`
 - `GET /api/batch/current`
 - `GET /api/batch/history`
+  Optional query params: `page`, `page_size`
 - `GET /api/batch/run/<run_id>`
 - `GET /api/batch/run/<run_id>/item/<item_id>/logs`
 - `GET /api/openapi.json` (OpenAPI spec)

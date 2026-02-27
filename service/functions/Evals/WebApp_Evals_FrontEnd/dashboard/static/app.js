@@ -1,4 +1,14 @@
 let trendChart;
+const trendCache = {};
+const apiCache = new Map();
+
+const CACHE_TTL_MS = {
+  latest: 5000,
+  alerts: 5000,
+  batchCurrent: 5000,
+  batchHistory: 8000,
+  trends: 60000
+};
 
 async function fetchJson(url) {
   const response = await fetch(url);
@@ -6,6 +16,19 @@ async function fetchJson(url) {
     throw new Error(`Request failed for ${url}`);
   }
   return response.json();
+}
+
+async function fetchJsonCached(url, ttlMs = 0) {
+  const now = Date.now();
+  const cached = apiCache.get(url);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+  const value = await fetchJson(url);
+  if (ttlMs > 0) {
+    apiCache.set(url, { value, expiresAt: now + ttlMs });
+  }
+  return value;
 }
 
 function buildThresholdQuery() {
@@ -79,15 +102,28 @@ function renderBatchCurrent(run) {
   `;
 }
 
-function renderBatchHistory(runs) {
+let currentBatchPage = 1;
+const batchPageSize = 5;
+let totalBatchHistoryItems = 0;
+let totalBatchHistoryPages = 1;
+
+function renderBatchHistory(payload) {
   const container = document.getElementById("batchHistory");
   container.innerHTML = "";
-  if (!runs.length) {
+
+  const pageRuns = Array.isArray(payload) ? payload : payload.items || [];
+  totalBatchHistoryItems = Array.isArray(payload) ? pageRuns.length : Number(payload.total || 0);
+  totalBatchHistoryPages = Array.isArray(payload)
+    ? Math.max(1, Math.ceil(totalBatchHistoryItems / batchPageSize))
+    : Math.max(1, Number(payload.total_pages || 1));
+
+  if (!pageRuns.length) {
     container.textContent = "No history.";
+    renderBatchPagination();
     return;
   }
 
-  runs.forEach((run) => {
+  pageRuns.forEach((run) => {
     const row = document.createElement("div");
     row.className = "batch-row";
 
@@ -115,6 +151,44 @@ function renderBatchHistory(runs) {
       await loadTrace(runId, itemId);
     });
   });
+
+  renderBatchPagination();
+}
+
+function renderBatchPagination() {
+  const container = document.getElementById("batchPagination");
+  if (!container) return;
+  container.innerHTML = "";
+  if (totalBatchHistoryPages <= 1) {
+    return; // No pagination needed
+  }
+
+  const prevBtn = document.createElement("button");
+  prevBtn.textContent = "Previous";
+  prevBtn.disabled = currentBatchPage === 1;
+  prevBtn.onclick = async () => {
+    if (currentBatchPage > 1) {
+      currentBatchPage--;
+      await loadBatchHistory(currentBatchPage);
+    }
+  };
+
+  const nextBtn = document.createElement("button");
+  nextBtn.textContent = "Next";
+  nextBtn.disabled = currentBatchPage === totalBatchHistoryPages;
+  nextBtn.onclick = async () => {
+    if (currentBatchPage < totalBatchHistoryPages) {
+      currentBatchPage++;
+      await loadBatchHistory(currentBatchPage);
+    }
+  };
+
+  const info = document.createElement("span");
+  info.textContent = `Page ${currentBatchPage} of ${totalBatchHistoryPages} (Total: ${totalBatchHistoryItems})`;
+
+  container.appendChild(prevBtn);
+  container.appendChild(info);
+  container.appendChild(nextBtn);
 }
 
 async function loadTrace(runId, itemId) {
@@ -149,7 +223,10 @@ function renderAlerts(alerts) {
 }
 
 async function loadTrend(appId) {
-  const trend = await fetchJson(`/api/trends/${appId}`);
+  if (!trendCache[appId]) {
+    trendCache[appId] = await fetchJsonCached(`/api/trends/${appId}`, CACHE_TTL_MS.trends);
+  }
+  const trend = trendCache[appId];
   const labels = trend.map((x) => x.timestamp.slice(0, 10));
 
   const precision = trend.map((x) => x.performance_precision_coherence ?? null);
@@ -162,29 +239,65 @@ async function loadTrend(appId) {
     { label: "Safety Toxicity", data: toxicity, yAxisID: "y", borderColor: "#3d5a80" }
   ];
 
-  if (trendChart) {
-    trendChart.destroy();
+  if (!trendChart) {
+    trendChart = new Chart(document.getElementById("trendChart"), {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        animation: false,
+        scales: {
+          y: { type: "linear", position: "left" },
+          y1: { type: "linear", position: "right", grid: { drawOnChartArea: false } }
+        }
+      }
+    });
+    return;
   }
 
-  trendChart = new Chart(document.getElementById("trendChart"), {
-    type: "line",
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      scales: {
-        y: { type: "linear", position: "left" },
-        y1: { type: "linear", position: "right", grid: { drawOnChartArea: false } }
-      }
-    }
-  });
+  trendChart.data.labels = labels;
+  trendChart.data.datasets = datasets;
+  trendChart.update("none");
+}
+
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+const debouncedLoadTrend = debounce((appId) => loadTrend(appId), 250);
+
+async function loadBatchHistory(page = 1) {
+  const payload = await fetchJsonCached(
+    `/api/batch/history?page=${page}&page_size=${batchPageSize}`,
+    CACHE_TTL_MS.batchHistory
+  );
+  currentBatchPage = Number(payload.page || page);
+  renderBatchHistory(payload);
 }
 
 async function reloadDashboard() {
   const query = buildThresholdQuery();
-  const latest = await fetchJson(`/api/latest${query}`);
-  const alerts = await fetchJson(`/api/alerts${query}`);
-  const currentRun = await fetchJson("/api/batch/current");
-  const history = await fetchJson("/api/batch/history");
+
+  // Clear the trend cache on explicitly reloading the dashboard
+  Object.keys(trendCache).forEach(key => delete trendCache[key]);
+
+  const [latest, alerts, currentRun, history] = await Promise.all([
+    fetchJsonCached(`/api/latest${query}`, CACHE_TTL_MS.latest),
+    fetchJsonCached(`/api/alerts${query}`, CACHE_TTL_MS.alerts),
+    fetchJsonCached("/api/batch/current", CACHE_TTL_MS.batchCurrent),
+    fetchJsonCached(
+      `/api/batch/history?page=${currentBatchPage}&page_size=${batchPageSize}`,
+      CACHE_TTL_MS.batchHistory
+    )
+  ]);
 
   renderApps(latest);
   renderAlerts(alerts);
@@ -192,6 +305,7 @@ async function reloadDashboard() {
   renderBatchHistory(history);
 
   const select = document.getElementById("appSelect");
+  const currentValue = select.value;
   select.innerHTML = "";
   latest.forEach((item) => {
     const option = document.createElement("option");
@@ -201,7 +315,12 @@ async function reloadDashboard() {
   });
 
   if (latest.length) {
-    await loadTrend(latest[0].app_id);
+    if (currentValue && latest.some(i => i.app_id === currentValue)) {
+      select.value = currentValue;
+      debouncedLoadTrend(currentValue);
+    } else {
+      debouncedLoadTrend(latest[0].app_id);
+    }
   }
 }
 
@@ -210,8 +329,8 @@ async function boot() {
   const select = document.getElementById("appSelect");
   const applyButton = document.getElementById("applyThresholds");
 
-  select.addEventListener("change", async (event) => {
-    await loadTrend(event.target.value);
+  select.addEventListener("change", (event) => {
+    debouncedLoadTrend(event.target.value);
   });
   applyButton.addEventListener("click", reloadDashboard);
 }
